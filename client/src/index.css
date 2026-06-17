@@ -160,11 +160,11 @@
 
   /* Cards */
   .card {
-    @apply bg-white rounded-xl border border-slate-200 shadow-card transition-all duration-300;
+    @apply bg-white rounded-xl border border-slate-200 shadow-card transition-all duration-300 ease-out;
   }
   .card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.04);
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05);
   }
   .dark .card {
     background-color: var(--color-surface);
@@ -183,6 +183,12 @@
                 background-color 200ms ease,
                 color 200ms ease,
                 box-shadow 200ms ease;
+  }
+  .nav-item svg {
+    transition: transform 200ms ease-out;
+  }
+  .nav-item:hover svg {
+    transform: scale(1.15) rotate(3deg);
   }
   .nav-item:hover {
     transform: translateX(4px) scale(1.02);
@@ -241,9 +247,9 @@
   /* Form */
   .form-label { @apply block text-sm font-medium text-slate-700 mb-1.5; }
   .form-input {
-    @apply w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white
-           placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent
-           transition-shadow duration-150;
+    @apply w-full px-3 py-2 border border-slate-300 dark:border-zinc-800 rounded-lg text-sm text-slate-900 bg-white
+           placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-brand-500/20 focus:border-brand-500
+           transition-all duration-200 ease-out;
   }
   .form-select {
     @apply form-input cursor-pointer;
@@ -256,14 +262,14 @@
   /* Buttons */
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
-           transition-all duration-200 cursor-pointer select-none disabled:opacity-50 disabled:cursor-not-allowed;
+           transition-all duration-200 ease-out cursor-pointer select-none disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(37, 99, 235, 0.15);
   }
   .btn:active {
-    transform: translateY(0);
+    transform: translateY(0) scale(0.97);
   }
   .btn-primary {
     @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 shadow-sm;
@@ -328,4 +334,35 @@ audio::-webkit-media-controls-panel {
 @keyframes badgeScaleIn {
   from { transform: scale(0.9); opacity: 0; }
   to   { transform: scale(1); opacity: 1; }
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-slide-up {
+  animation: modalSlideUp 350ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes dropdownSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dropdown-bounce {
+  animation: dropdownSlide 250ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transform-origin: top right;
 }

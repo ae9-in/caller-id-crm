@@ -92,7 +92,7 @@ const Header = ({ onMenuClick }) => {
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 top-12 w-96 bg-white rounded-xl shadow-dialog border border-slate-200 z-50 fade-in">
+            <div className="absolute right-0 top-12 w-96 bg-white dark:bg-zinc-900 rounded-xl shadow-dialog border border-slate-200 dark:border-zinc-800 z-50 dropdown-bounce">
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                 <span className="font-semibold text-slate-800 text-sm">Notifications</span>
                 <div className="flex items-center gap-2">

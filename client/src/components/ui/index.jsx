@@ -177,7 +177,7 @@ export const Modal = ({ open, onClose, title, children, footer, size = 'md' }) =
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className={clsx('relative bg-white dark:bg-zinc-900 rounded-2xl shadow-dialog w-full max-h-[90vh] flex flex-col fade-in', sizes[size])}>
+      <div className={clsx('relative bg-white dark:bg-zinc-900 rounded-2xl shadow-dialog w-full max-h-[90vh] flex flex-col modal-slide-up', sizes[size])}>
         <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-zinc-800 shrink-0">
           <h2 className="text-base font-semibold text-slate-900 dark:text-zinc-100">{title}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 p-1 cursor-pointer">
