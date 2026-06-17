@@ -114,10 +114,7 @@ const Header = ({ onMenuClick }) => {
                     <div
                       key={n.id}
                       onClick={() => { markRead(n.id); if (n.link) navigate(n.link) }}
-                      className={clsx(
-                        'px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors',
-                        !n.is_read && 'bg-brand-50/40'
-                      )}
+                      className="px-4 py-3 border-b border-slate-100 dark:border-zinc-800/60 cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors"
                     >
                       <div className="flex items-start gap-2">
                         {!n.is_read && <div className="w-2 h-2 bg-brand-500 rounded-full mt-1.5 shrink-0" />}
