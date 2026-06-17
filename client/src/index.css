@@ -21,12 +21,12 @@
   }
 
   .dark {
-    --color-bg: #0a1929;
-    --color-surface: #102a43;
-    --color-border: #1e3a5f;
-    --color-text-primary: #f1f5f9;
-    --color-text-secondary: #94a3b8;
-    --color-text-muted: #64748b;
+    --color-bg: #09090b;       /* Zinc 950 - true charcoal/black dark background */
+    --color-surface: #18181b;  /* Zinc 900 - true dark surface */
+    --color-border: #27272a;   /* Zinc 800 - dark border */
+    --color-text-primary: #f4f4f5; /* Zinc 100 - light gray primary text */
+    --color-text-secondary: #a1a1aa; /* Zinc 400 - secondary text */
+    --color-text-muted: #71717a; /* Zinc 500 - muted text */
   }
 
   /* Core Dark Mode Overrides */
@@ -167,7 +167,8 @@
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.04);
   }
   .dark .card {
-    @apply bg-navy-900 border-navy-700;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
   }
 
   /* Metric card */
