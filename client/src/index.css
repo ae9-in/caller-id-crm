@@ -6,12 +6,12 @@
   :root {
     --sidebar-width: 256px;
     --header-height: 64px;
-    --color-bg: #eaedf1;       /* Cool slate-gray layout background (less stark white) */
-    --color-surface: #ffffff;  /* Pure white cards/canvas panels */
-    --color-border: #d8dee6;   /* Darker, clean border for visual structure */
-    --color-text-primary: #0f172a;
-    --color-text-secondary: #475569;
-    --color-text-muted: #94a3b8;
+    --color-bg: #d9dee4;       /* Low-glare cool paper-gray canvas background */
+    --color-surface: #ebedf0;  /* Soft off-white/gray panels (no stark white glare) */
+    --color-border: #cbd2dc;   /* Darker, defined border lines for structure */
+    --color-text-primary: #1e293b;   /* Slate 800 - dark charcoal primary text */
+    --color-text-secondary: #475569; /* Slate 600 - secondary text */
+    --color-text-muted: #64748b;     /* Slate 500 - muted text */
     --color-brand: #2563eb;
     --color-brand-dark: #1d4ed8;
     --color-success: #10b981;
@@ -29,77 +29,78 @@
     --color-text-muted: #71717a; /* Zinc 500 - muted text */
   }
 
-  /* Core Dark Mode Overrides */
-  .dark body, 
-  .dark .bg-slate-50, 
-  .dark .bg-slate-100 {
+  /* Core Theme Overrides (applies to both light and dark modes) */
+  body, 
+  .bg-slate-100 {
     background-color: var(--color-bg) !important;
   }
 
-  .dark aside,
-  .dark header,
-  .dark .bg-white,
-  .dark .modal-content,
-  .dark .dialog-content {
-    background-color: var(--color-surface) !important;
-  }
-
-  .dark .card,
-  .dark .metric-card {
+  aside,
+  header,
+  .bg-white,
+  .bg-slate-50,
+  .modal-content,
+  .dialog-content,
+  .card,
+  .metric-card {
     background-color: var(--color-surface) !important;
     border-color: var(--color-border) !important;
   }
 
-  .dark .border-slate-100,
-  .dark .border-slate-200,
-  .dark .border-b,
-  .dark .border-t,
-  .dark .border-r,
-  .dark .border {
+  .border-slate-100,
+  .border-slate-200,
+  .border-b,
+  .border-t,
+  .border-r,
+  .border {
     border-color: var(--color-border) !important;
   }
 
-  .dark .text-slate-900,
-  .dark .text-slate-800,
-  .dark .text-slate-700,
-  .dark h1,
-  .dark h2,
-  .dark h3,
-  .dark .page-title {
+  .text-slate-900,
+  .text-slate-800,
+  .text-slate-700,
+  h1,
+  h2,
+  h3,
+  .page-title {
     color: var(--color-text-primary) !important;
   }
 
-  .dark .text-slate-500,
-  .dark .text-slate-600,
-  .dark .page-desc {
+  .text-slate-500,
+  .text-slate-600,
+  .page-desc {
     color: var(--color-text-secondary) !important;
   }
 
-  .dark .text-slate-400 {
+  .text-slate-400 {
     color: var(--color-text-muted) !important;
   }
 
-  .dark input,
-  .dark select,
-  .dark textarea {
+  input,
+  select,
+  textarea {
     background-color: var(--color-bg) !important;
     border-color: var(--color-border) !important;
     color: var(--color-text-primary) !important;
   }
 
-  .dark input::placeholder {
+  input::placeholder {
     color: var(--color-text-muted) !important;
   }
 
-  .dark .data-table th {
+  .data-table th {
     background-color: var(--color-bg) !important;
     color: var(--color-text-secondary) !important;
     border-color: var(--color-border) !important;
   }
 
-  .dark .data-table td {
+  .data-table td {
     border-color: var(--color-border) !important;
     color: var(--color-text-primary) !important;
+  }
+
+  .data-table tbody tr:hover td {
+    background-color: rgba(0, 0, 0, 0.015) !important;
   }
 
   .dark .data-table tbody tr:hover td {
