@@ -93,11 +93,37 @@ const DashboardPage = () => {
           analyticsService.getOutcomes(),
           analyticsService.getMonthlyGrowth(),
         ])
+        // Format calls per day dates
+        const formattedDays = (dayRes.data.data || []).map(d => ({
+          ...d,
+          formattedDate: d.date ? new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
+        }));
+
+        // Format outcome pie chart data
+        const formattedOutcomes = (outcomeRes.data.data || [])
+          .filter((o) => o.call_outcome)
+          .map((o) => ({
+            name: o.call_outcome,
+            value: parseInt(o.count || '0'),
+          }));
+
+        // Format monthly growth months
+        const formattedMonthly = (monthRes.data.data || []).map(m => {
+          const [year, month] = (m.month || '').split('-');
+          const date = new Date(year, parseInt(month) - 1, 1);
+          return {
+            ...m,
+            formattedMonth: date.toLocaleDateString('en-US', { month: 'short' }),
+            total_calls: parseInt(m.total_calls || '0'),
+            meetings: parseInt(m.meetings || '0')
+          };
+        });
+
         setStats(dashRes.data.data)
         setChartData({
-          callsPerDay: dayRes.data.data || [],
-          outcomes: (outcomeRes.data.data || []).filter((o) => o.call_outcome),
-          monthly: monthRes.data.data || [],
+          callsPerDay: formattedDays,
+          outcomes: formattedOutcomes,
+          monthly: formattedMonthly,
         })
       } catch (err) {
         console.error(err)
@@ -148,10 +174,17 @@ const DashboardPage = () => {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={chartData.callsPerDay} barSize={6}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => v?.slice(5)} />
+              <XAxis dataKey="formattedDate" tick={{ fontSize: 11, fill: '#94a3b8' }} />
               <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
               <Tooltip
-                contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                contentStyle={{
+                  borderRadius: 12,
+                  border: '1px solid #e2e8f0',
+                  fontSize: 12,
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                  background: 'rgba(255, 255, 255, 0.95)',
+                  backdropFilter: 'blur(4px)',
+                }}
                 formatter={(v, name) => [v, name === 'total' ? 'Total' : 'Pitched']}
               />
               <Bar dataKey="total" fill="#bfdbfe" radius={[4, 4, 0, 0]} name="total" />
@@ -168,19 +201,34 @@ const DashboardPage = () => {
               <PieChart>
                 <Pie
                   data={chartData.outcomes}
-                  dataKey="count"
-                  nameKey="call_outcome"
+                  dataKey="value"
+                  nameKey="name"
                   cx="50%"
                   cy="50%"
                   outerRadius={80}
-                  innerRadius={40}
+                  innerRadius={50}
+                  paddingAngle={2}
                 >
                   {chartData.outcomes.map((entry) => (
-                    <Cell key={entry.call_outcome} fill={OUTCOME_COLORS[entry.call_outcome] || '#e2e8f0'} />
+                    <Cell key={entry.name} fill={OUTCOME_COLORS[entry.name] || '#e2e8f0'} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v, name) => [v, getStatusLabel(name)]} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                <Legend formatter={(v) => getStatusLabel(v)} wrapperStyle={{ fontSize: 11 }} />
+                <Tooltip
+                  formatter={(v, name) => {
+                    const total = chartData.outcomes.reduce((sum, item) => sum + item.value, 0);
+                    const percent = total > 0 ? ((v / total) * 100).toFixed(1) : 0;
+                    return [`${v} (${percent}%)`, getStatusLabel(name)];
+                  }}
+                  contentStyle={{
+                    borderRadius: 12,
+                    border: '1px solid #e2e8f0',
+                    fontSize: 12,
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    background: 'rgba(255, 255, 255, 0.95)',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                />
+                <Legend formatter={(v) => getStatusLabel(v)} wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -200,9 +248,18 @@ const DashboardPage = () => {
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={chartData.monthly}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+              <XAxis dataKey="formattedMonth" tick={{ fontSize: 11, fill: '#94a3b8' }} />
               <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+              <Tooltip
+                contentStyle={{
+                  borderRadius: 12,
+                  border: '1px solid #e2e8f0',
+                  fontSize: 12,
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                  background: 'rgba(255, 255, 255, 0.95)',
+                  backdropFilter: 'blur(4px)',
+                }}
+              />
               <Bar dataKey="total_calls" fill="#2563eb" radius={[4, 4, 0, 0]} name="Calls" />
               <Bar dataKey="meetings" fill="#10b981" radius={[4, 4, 0, 0]} name="Meetings" />
             </BarChart>
