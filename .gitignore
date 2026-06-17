@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.env
+*.local
+.DS_Store
+uploads/
+*.log
+coverage/
+.nyc_output/
+scratch/
+test_whisper_server.js
+testLogin.js
