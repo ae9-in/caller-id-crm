@@ -489,7 +489,7 @@ const getMockSummary = (transcript, duration) => {
     detectedOutcome = 'no_answer';
   } else if (lowerText.includes('call back') || lowerText.includes('call you later') || lowerText.includes('hang up')) {
     detectedOutcome = 'call_back_later';
-  } else if (lowerText.includes('interested') || lowerText.includes('sounds good') || lowerText.includes('send me') || lowerText.includes('would like to') || lowerText.includes('proposal')) {
+  } else if (lowerText.includes('interested') || lowerText.includes('interest') || lowerText.includes('sounds good') || lowerText.includes('send me') || lowerText.includes('would like to') || lowerText.includes('proposal')) {
     detectedOutcome = 'interested';
   } else if (lowerText.includes('follow up') || lowerText.includes('check again')) {
     detectedOutcome = 'follow_up_needed';
@@ -705,8 +705,9 @@ const generateSummary = async (transcript, duration) => {
 TRANSCRIPT:
 ${transcript}
 
-CRITICAL REQUIREMENT:
-If the customer/speaker says "send me a mail", "send me mail", "send me an email", "email me", "mail me", "send a mail", or "send an email", you MUST classify the "detected_outcome" as "follow_up_needed".
+CRITICAL REQUIREMENTS:
+1. If the customer/speaker says "send me a mail", "send me mail", "send me an email", "email me", "mail me", "send a mail", or "send an email", you MUST classify the "detected_outcome" as "follow_up_needed".
+2. If the customer/speaker says "interested" or "interest", or expresses clear interest/agreement (e.g. "sounds good", "send me the proposal"), you MUST classify the "detected_outcome" as "interested".
 
 Respond with ONLY valid JSON in this exact format:
 {

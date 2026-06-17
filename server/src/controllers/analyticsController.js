@@ -21,8 +21,7 @@ const getDashboardStats = async (req, res, next) => {
             COALESCE(
               SUM(
                 CASE 
-                  WHEN c.is_pitched = true AND c.call_outcome IN ('interested','converted','meeting_scheduled') THEN 1.0 
-                  WHEN c.is_pitched = true AND c.call_outcome = 'follow_up_needed' THEN 0.5 
+                  WHEN c.is_pitched = true AND c.call_outcome = 'interested' THEN 1.0 
                   ELSE 0.0 
                 END
               ), 
@@ -131,8 +130,7 @@ const getLeaderboard = async (req, res, next) => {
           COALESCE(
             SUM(
               CASE 
-                WHEN c.is_pitched = true AND c.call_outcome IN ('interested','converted','meeting_scheduled') THEN 1.0 
-                WHEN c.is_pitched = true AND c.call_outcome = 'follow_up_needed' THEN 0.5 
+                WHEN c.is_pitched = true AND c.call_outcome = 'interested' THEN 1.0 
                 ELSE 0.0 
               END
             ), 
@@ -170,8 +168,7 @@ const getUserAnalytics = async (req, res, next) => {
             COALESCE(
               SUM(
                 CASE 
-                  WHEN is_pitched = true AND call_outcome IN ('interested','converted','meeting_scheduled') THEN 1.0 
-                  WHEN is_pitched = true AND call_outcome = 'follow_up_needed' THEN 0.5 
+                  WHEN is_pitched = true AND call_outcome = 'interested' THEN 1.0 
                   ELSE 0.0 
                 END
               ), 
