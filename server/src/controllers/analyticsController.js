@@ -16,7 +16,7 @@ const getDashboardStats = async (req, res, next) => {
           COUNT(*) as total_calls,
           COUNT(*) FILTER (WHERE c.is_pitched = true) as pitched_calls,
           COUNT(*) FILTER (WHERE c.call_outcome = 'meeting_scheduled') as meetings_scheduled,
-          ROUND(AVG(c.duration_seconds)::numeric, 0) as avg_duration,
+          ROUND(AVG(c.duration_seconds) FILTER (WHERE c.duration_seconds > 0)::numeric, 0) as avg_duration,
           ROUND(
             COALESCE(
               SUM(
@@ -87,7 +87,7 @@ const getCallsPerUser = async (req, res, next) => {
         u.id, u.first_name || ' ' || u.last_name as name,
         COUNT(c.id) as total_calls,
         COUNT(c.id) FILTER (WHERE c.is_pitched = true) as pitched_calls,
-        ROUND(AVG(c.duration_seconds)::numeric, 0) as avg_duration,
+        ROUND(AVG(c.duration_seconds) FILTER (WHERE c.duration_seconds > 0)::numeric, 0) as avg_duration,
         COUNT(c.id) FILTER (WHERE c.call_outcome = 'meeting_scheduled') as meetings
       FROM users u
       LEFT JOIN calls c ON u.id = c.user_id
@@ -161,7 +161,7 @@ const getUserAnalytics = async (req, res, next) => {
         SELECT
           COUNT(*) as total_calls,
           COUNT(*) FILTER (WHERE is_pitched = true) as pitched_calls,
-          ROUND(AVG(duration_seconds)::numeric, 0) as avg_duration,
+          ROUND(AVG(duration_seconds) FILTER (WHERE duration_seconds > 0)::numeric, 0) as avg_duration,
           COUNT(*) FILTER (WHERE call_outcome = 'meeting_scheduled') as meetings,
           COUNT(DISTINCT business_id) as businesses_contacted,
           ROUND(

@@ -85,7 +85,8 @@ const DashboardPage = () => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const load = async () => {
+    const load = async (isSilent = false) => {
+      if (!isSilent) setLoading(true)
       try {
         const [dashRes, dayRes, outcomeRes, monthRes] = await Promise.all([
           analyticsService.getDashboard(),
@@ -128,10 +129,18 @@ const DashboardPage = () => {
       } catch (err) {
         console.error(err)
       } finally {
-        setLoading(false)
+        if (!isSilent) setLoading(false)
       }
     }
-    load()
+    
+    load(false)
+    
+    // Silent polling every 10 seconds to update analytics and average durations in real time
+    const interval = setInterval(() => {
+      load(true)
+    }, 10000)
+    
+    return () => clearInterval(interval)
   }, [])
 
   if (loading) return <LoadingState message="Loading dashboard..." />
