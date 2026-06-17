@@ -6,9 +6,9 @@
   :root {
     --sidebar-width: 256px;
     --header-height: 64px;
-    --color-bg: #f1f5f9;
-    --color-surface: #ffffff;
-    --color-border: #e2e8f0;
+    --color-bg: #eaedf1;       /* Cool slate-gray layout background (less stark white) */
+    --color-surface: #ffffff;  /* Pure white cards/canvas panels */
+    --color-border: #d8dee6;   /* Darker, clean border for visual structure */
     --color-text-primary: #0f172a;
     --color-text-secondary: #475569;
     --color-text-muted: #94a3b8;

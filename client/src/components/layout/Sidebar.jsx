@@ -48,7 +48,7 @@ const Sidebar = ({ open }) => {
   return (
     <aside
       className={clsx(
-        'fixed lg:static inset-y-0 left-0 z-30 flex flex-col bg-white sidebar-aside',
+        'fixed lg:static inset-y-0 left-0 z-30 flex flex-col bg-slate-50 dark:bg-zinc-900 sidebar-aside',
         open ? 'w-64 border-r border-slate-200 shadow-md' : 'w-0 overflow-hidden shadow-none'
       )}
     >
@@ -107,7 +107,7 @@ const Sidebar = ({ open }) => {
       <div className="border-t border-slate-200 p-3 shrink-0">
         <NavLink
           to="/profile"
-          className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer group sidebar-nav-item"
+          className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-200/60 dark:hover:bg-zinc-800/40 cursor-pointer group sidebar-nav-item"
           style={{
             opacity: open ? 1 : 0,
             transform: open ? 'translateX(0)' : 'translateX(-16px)',
