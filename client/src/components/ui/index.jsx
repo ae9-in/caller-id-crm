@@ -82,9 +82,31 @@ export const Textarea = ({ label, error, className, ...props }) => (
 
 // ── Spinner ──────────────────────────────────────────────────────────────
 export const Spinner = ({ size = 'md', className }) => {
-  const sizes = { sm: 'w-4 h-4', md: 'w-6 h-6', lg: 'w-10 h-10' }
+  if (size === 'sm') {
+    return (
+      <div className={clsx('flex items-center justify-center gap-0.5 h-4 inline-flex mr-1.5 align-middle', className)}>
+        <span className="w-0.5 h-2 bg-current rounded-full animate-soundwave-sm-1" />
+        <span className="w-0.5 h-3.5 bg-current rounded-full animate-soundwave-sm-2" />
+        <span className="w-0.5 h-2 bg-current rounded-full animate-soundwave-sm-3" />
+      </div>
+    )
+  }
+
   return (
-    <div className={clsx('border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin', sizes[size], className)} />
+    <div className={clsx('flex flex-col items-center justify-center gap-4 relative py-4', className)}>
+      {/* Concentric pulsing rings */}
+      <div className="absolute w-16 h-16 bg-brand-500/10 rounded-full animate-ping-slow" />
+      <div className="absolute w-24 h-24 bg-brand-500/5 rounded-full animate-ping-slower" />
+      
+      {/* 5-bar voice soundwave loader */}
+      <div className="flex items-center justify-center gap-1.5 h-10 z-10">
+        <span className="w-1 bg-brand-600 dark:bg-brand-500 rounded-full animate-soundwave-lg-1" style={{ height: '16px' }} />
+        <span className="w-1 bg-brand-600 dark:bg-brand-500 rounded-full animate-soundwave-lg-2" style={{ height: '32px' }} />
+        <span className="w-1 bg-brand-600 dark:bg-brand-500 rounded-full animate-soundwave-lg-3" style={{ height: '40px' }} />
+        <span className="w-1 bg-brand-600 dark:bg-brand-500 rounded-full animate-soundwave-lg-4" style={{ height: '28px' }} />
+        <span className="w-1 bg-brand-600 dark:bg-brand-500 rounded-full animate-soundwave-lg-5" style={{ height: '14px' }} />
+      </div>
+    </div>
   )
 }
 
