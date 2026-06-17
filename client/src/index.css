@@ -29,6 +29,105 @@
     --color-text-muted: #64748b;
   }
 
+  /* Core Dark Mode Overrides */
+  .dark body, 
+  .dark .bg-slate-50, 
+  .dark .bg-slate-100 {
+    background-color: var(--color-bg) !important;
+  }
+
+  .dark aside,
+  .dark header,
+  .dark .bg-white,
+  .dark .modal-content,
+  .dark .dialog-content {
+    background-color: var(--color-surface) !important;
+  }
+
+  .dark .card,
+  .dark .metric-card {
+    background-color: var(--color-surface) !important;
+    border-color: var(--color-border) !important;
+  }
+
+  .dark .border-slate-100,
+  .dark .border-slate-200,
+  .dark .border-b,
+  .dark .border-t,
+  .dark .border-r,
+  .dark .border {
+    border-color: var(--color-border) !important;
+  }
+
+  .dark .text-slate-900,
+  .dark .text-slate-800,
+  .dark .text-slate-700,
+  .dark h1,
+  .dark h2,
+  .dark h3,
+  .dark .page-title {
+    color: var(--color-text-primary) !important;
+  }
+
+  .dark .text-slate-500,
+  .dark .text-slate-600,
+  .dark .page-desc {
+    color: var(--color-text-secondary) !important;
+  }
+
+  .dark .text-slate-400 {
+    color: var(--color-text-muted) !important;
+  }
+
+  .dark input,
+  .dark select,
+  .dark textarea {
+    background-color: var(--color-bg) !important;
+    border-color: var(--color-border) !important;
+    color: var(--color-text-primary) !important;
+  }
+
+  .dark input::placeholder {
+    color: var(--color-text-muted) !important;
+  }
+
+  .dark .data-table th {
+    background-color: var(--color-bg) !important;
+    color: var(--color-text-secondary) !important;
+    border-color: var(--color-border) !important;
+  }
+
+  .dark .data-table td {
+    border-color: var(--color-border) !important;
+    color: var(--color-text-primary) !important;
+  }
+
+  .dark .data-table tbody tr:hover td {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+  }
+
+  /* Audio player styling in dark mode */
+  .dark audio::-webkit-media-controls-panel {
+    background-color: var(--color-surface) !important;
+  }
+  
+  .dark .nav-item {
+    color: var(--color-text-secondary) !important;
+  }
+  .dark .nav-item:hover {
+    background-color: var(--color-brand) !important;
+    color: #ffffff !important;
+  }
+  .dark .nav-item.active {
+    background-color: rgba(37, 99, 235, 0.15) !important;
+    color: var(--color-text-primary) !important;
+  }
+
+  .dark .bg-brand-50 {
+    background-color: rgba(37, 99, 235, 0.15) !important;
+    color: var(--color-text-primary) !important;
+  }
+
   * {
     box-sizing: border-box;
   }

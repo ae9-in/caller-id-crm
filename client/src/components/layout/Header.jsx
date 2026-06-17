@@ -10,7 +10,18 @@ const Header = ({ onMenuClick }) => {
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications()
   const [showNotifications, setShowNotifications] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark')
   const notifRef = useRef(null)
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('theme', 'dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('theme', 'light')
+    }
+  }, [theme])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -56,12 +67,21 @@ const Header = ({ onMenuClick }) => {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 ml-auto">
+      <div className="flex items-center gap-3 ml-auto">
+        {/* Theme Toggle */}
+        <button
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-navy-800 transition-colors cursor-pointer"
+          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {theme === 'dark' ? <Sun size={20} className="text-amber-500 animate-pulse" /> : <Moon size={20} />}
+        </button>
+
         {/* Notifications */}
         <div className="relative" ref={notifRef}>
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className="relative p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+            className="relative p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-navy-800 transition-colors"
           >
             <Bell size={20} />
             {unreadCount > 0 && (
