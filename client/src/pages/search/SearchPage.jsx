@@ -32,6 +32,14 @@ const SearchPage = () => {
   const [loading, setLoading] = useState(false)
   const debouncedQuery = useDebounce(query, 500)
 
+  // Sync URL query param to query state (e.g. searching from Header while already on SearchPage)
+  useEffect(() => {
+    const urlQuery = searchParams.get('q') || ''
+    if (urlQuery !== query) {
+      setQuery(urlQuery)
+    }
+  }, [searchParams])
+
   useEffect(() => {
     const trimmed = debouncedQuery.trim();
     if (trimmed.length < 2) { setResults(null); return }

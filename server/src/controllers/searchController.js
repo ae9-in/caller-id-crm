@@ -53,14 +53,14 @@ const globalSearch = async (req, res, next) => {
       // Use native plainto_tsquery to safely handle stopwords and spaces in SQL full-text search
       const r = await query(
         `SELECT ct.call_id as id, c.title as call_title, b.name as business_name,
-                ts_headline('english', ct.full_text, plainto_tsquery('english', $2), 'MaxFragments=1,MaxWords=20,MinWords=10') as snippet,
+                ts_headline('english', ct.full_text, plainto_tsquery('english', $1), 'MaxFragments=1,MaxWords=20,MinWords=10') as snippet,
                 'transcript' as type
          FROM call_transcripts ct
          JOIN calls c ON ct.call_id = c.id
          LEFT JOIN businesses b ON c.business_id = b.id
-         WHERE to_tsvector('english', COALESCE(ct.full_text, '')) @@ plainto_tsquery('english', $2)
+         WHERE to_tsvector('english', COALESCE(ct.full_text, '')) @@ plainto_tsquery('english', $1)
          LIMIT 10`,
-        [term, q]
+        [q]
       );
       searches.transcripts = r.rows;
     }
