@@ -22,6 +22,9 @@ const ResultSection = ({ title, icon: Icon, results, renderItem }) => {
   )
 }
 
+// Client-side in-memory search cache to store and retrieve queries instantly
+const clientSearchCache = {};
+
 const SearchPage = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState(searchParams.get('q') || '')
@@ -30,13 +33,26 @@ const SearchPage = () => {
   const debouncedQuery = useDebounce(query, 500)
 
   useEffect(() => {
-    if (debouncedQuery.length < 2) { setResults(null); return }
+    const trimmed = debouncedQuery.trim();
+    if (trimmed.length < 2) { setResults(null); return }
+
+    // Check client-side cache
+    if (clientSearchCache[trimmed]) {
+      setResults(clientSearchCache[trimmed]);
+      setSearchParams({ q: trimmed });
+      return;
+    }
+
     setLoading(true)
-    searchService.search(debouncedQuery)
-      .then((r) => setResults(r.data.data))
+    searchService.search(trimmed)
+      .then((r) => {
+        const data = r.data.data;
+        clientSearchCache[trimmed] = data; // Cache the result
+        setResults(data);
+      })
       .catch(() => setResults(null))
       .finally(() => setLoading(false))
-    setSearchParams({ q: debouncedQuery })
+    setSearchParams({ q: trimmed })
   }, [debouncedQuery])
 
   const totalResults = results
