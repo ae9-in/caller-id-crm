@@ -20,7 +20,8 @@ const CallFoldersPage = () => {
   const [loading, setLoading] = useState(true)
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [selectedFolder, setSelectedFolder] = useState(null)
-  const [expandedFolders, setExpandedFolders] = useState([])
+  const [expandedUsers, setExpandedUsers] = useState([])
+  const [expandedDates, setExpandedDates] = useState([])
 
   // Filters
   const [search, setSearch] = useState('')
@@ -52,8 +53,11 @@ const CallFoldersPage = () => {
 
       // Auto-expand first folder on initial load if present
       if (folderData.length > 0) {
-        const firstKey = `${folderData[0].folder_date}-${folderData[0].user_id}`
-        setExpandedFolders((prev) => prev.length > 0 ? prev : [firstKey])
+        const firstFolder = folderData[0]
+        setExpandedUsers((prev) => prev.length > 0 ? prev : [firstFolder.user_id])
+        
+        const firstDateKey = `${firstFolder.user_id}-${firstFolder.folder_date}`
+        setExpandedDates((prev) => prev.length > 0 ? prev : [firstDateKey])
 
         // Auto-select the first folder
         setSelectedFolder((prev) => {
@@ -61,9 +65,9 @@ const CallFoldersPage = () => {
             const exists = folderData.find(
               (f) => f.folder_date === prev.folder_date && f.user_id === prev.user_id
             )
-            return exists || folderData[0]
+            return exists || firstFolder
           }
-          return folderData[0]
+          return firstFolder
         })
       } else {
         setSelectedFolder(null)
@@ -144,10 +148,34 @@ const CallFoldersPage = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
-  // Toggle folder selection accordion
-  const toggleFolder = (folderKey) => {
-    setExpandedFolders((prev) =>
-      prev.includes(folderKey) ? prev.filter((k) => k !== folderKey) : [...prev, folderKey]
+  // Group folders by user
+  const groupedUsers = []
+  folders.forEach((folder) => {
+    let userGroup = groupedUsers.find((g) => g.user_id === folder.user_id)
+    if (!userGroup) {
+      userGroup = {
+        user_id: folder.user_id,
+        user_name: folder.user_name,
+        dates: [],
+        total_calls: 0
+      }
+      groupedUsers.push(userGroup)
+    }
+    userGroup.dates.push(folder)
+    userGroup.total_calls += folder.total_calls
+  })
+
+  // Toggle user folder expanded state
+  const toggleUser = (userId) => {
+    setExpandedUsers((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    )
+  }
+
+  // Toggle date folder expanded state
+  const toggleDate = (dateKey) => {
+    setExpandedDates((prev) =>
+      prev.includes(dateKey) ? prev.filter((k) => k !== dateKey) : [...prev, dateKey]
     )
   }
 
@@ -253,71 +281,101 @@ const CallFoldersPage = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
-          {/* Left Panel: Folders Sidebar with User Name and Date beside it */}
+          {/* Left Panel: Folders Sidebar - Grouped by Agent then by Date */}
           <div className="col-span-1 bg-[var(--color-surface)] border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 space-y-2.5 max-h-[70vh] overflow-y-auto scrollbar-thin">
             <h3 className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider px-2 mb-2">
               Folders Tree
             </h3>
-            {folders.map((folder) => {
-              const folderKey = `${folder.folder_date}-${folder.user_id}`
-              const isSelected = selectedFolder && selectedFolder.folder_date === folder.folder_date && selectedFolder.user_id === folder.user_id
-              const isExpanded = expandedFolders.includes(folderKey)
+            {groupedUsers.map((group) => {
+              const isUserExpanded = expandedUsers.includes(group.user_id)
 
               return (
-                <div key={folderKey} className="space-y-1">
-                  {/* Folder Item */}
+                <div key={group.user_id} className="space-y-1">
+                  {/* Top-Level User Folder Button */}
                   <button
-                    onClick={() => {
-                      setSelectedFolder(folder)
-                      toggleFolder(folderKey)
-                    }}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all text-left text-sm font-semibold ${
-                      isSelected
-                        ? 'bg-brand-500 text-white shadow-sm'
-                        : 'text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800/40'
-                    }`}
+                    onClick={() => toggleUser(group.user_id)}
+                    className="w-full flex items-center justify-between p-2.5 rounded-xl text-left text-sm font-bold text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-all"
                   >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <Folder
                         size={18}
-                        className={isSelected ? 'text-white' : 'text-brand-500 fill-brand-100 dark:fill-brand-950/20'}
+                        className="text-brand-500 fill-brand-100 dark:fill-brand-950/20"
                       />
-                      <span className="truncate font-semibold">
-                        {folder.user_name || 'Unknown Agent'}
-                      </span>
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${
-                        isSelected
-                          ? 'bg-white/20 text-white'
-                          : 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400'
-                      }`}>
-                        {formatFolderDateShort(folder.folder_date)}
-                      </span>
+                      <span className="truncate">{group.user_name || 'Unknown Agent'}</span>
                     </div>
-                    
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                        isSelected
-                          ? 'bg-white/25 text-white'
-                          : 'bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400'
-                      }`}>
-                        {folder.total_calls}
+                      <span className="text-[9px] font-bold bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400 px-1.5 py-0.5 rounded-full">
+                        {group.total_calls}
+                      </span>
+                      <span className={`text-[8px] text-slate-400 transition-transform duration-200 ${isUserExpanded ? 'rotate-90' : ''}`}>
+                        ▶
                       </span>
                     </div>
                   </button>
 
-                  {/* Dropdown containing Call Files */}
-                  {isExpanded && (
-                    <div className="pl-4 pr-1 py-1 space-y-1 border-l border-slate-200 dark:border-zinc-800 ml-4 animate-fade-in">
-                      {folder.calls.map((call) => (
-                        <Link
-                          key={call.id}
-                          to={`/calls/${call.id}`}
-                          className="flex items-center gap-2 p-1.5 rounded-lg text-xs text-slate-600 dark:text-zinc-400 hover:bg-slate-100/70 dark:hover:bg-zinc-800/30 transition-all min-w-0"
-                        >
-                          <span className="shrink-0 text-slate-400 text-[10px]">📞</span>
-                          <span className="truncate flex-1">{call.title || call.file_name}</span>
-                        </Link>
-                      ))}
+                  {/* Level 2: Dates under this Agent */}
+                  {isUserExpanded && (
+                    <div className="pl-3.5 pr-0.5 py-0.5 space-y-1 border-l border-slate-200 dark:border-zinc-800 ml-4 animate-fade-in">
+                      {group.dates.map((folder) => {
+                        const dateKey = `${group.user_id}-${folder.folder_date}`
+                        const isDateSelected = selectedFolder && selectedFolder.folder_date === folder.folder_date && selectedFolder.user_id === folder.user_id
+                        const isDateExpanded = expandedDates.includes(dateKey)
+
+                        return (
+                          <div key={dateKey} className="space-y-1">
+                            {/* Date Button */}
+                            <button
+                              onClick={() => {
+                                setSelectedFolder(folder)
+                                toggleDate(dateKey)
+                              }}
+                              className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition-all text-left ${
+                                isDateSelected
+                                  ? 'bg-brand-500 text-white shadow-sm'
+                                  : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100/70 dark:hover:bg-zinc-800/30'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <Calendar
+                                  size={14}
+                                  className={isDateSelected ? 'text-white' : 'text-slate-400 dark:text-zinc-500'}
+                                />
+                                <span className="truncate">
+                                  {formatFolderDateShort(folder.folder_date)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                                  isDateSelected
+                                    ? 'bg-white/25 text-white'
+                                    : 'bg-brand-50 dark:bg-brand-950/30 text-brand-600 dark:text-brand-400'
+                                }`}>
+                                  {folder.total_calls}
+                                </span>
+                                <span className={`text-[7px] transition-transform duration-200 ${isDateExpanded ? 'rotate-90' : ''}`}>
+                                  ▶
+                                </span>
+                              </div>
+                            </button>
+
+                            {/* Level 3: Files under this Date */}
+                            {isDateExpanded && (
+                              <div className="pl-3.5 pr-0.5 py-0.5 space-y-1 border-l border-slate-200 dark:border-zinc-800 ml-3 animate-fade-in">
+                                {folder.calls.map((call) => (
+                                  <Link
+                                    key={call.id}
+                                    to={`/calls/${call.id}`}
+                                    className="flex items-center gap-2 p-1.5 rounded-lg text-xs text-slate-600 dark:text-zinc-400 hover:bg-slate-100/70 dark:hover:bg-zinc-800/30 transition-all min-w-0"
+                                  >
+                                    <span className="shrink-0 text-slate-400 text-[10px]">📞</span>
+                                    <span className="truncate flex-1">{call.title || call.file_name}</span>
+                                  </Link>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
