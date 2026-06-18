@@ -46,6 +46,7 @@ export const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: 'LayoutDashboard' },
   { path: '/businesses', label: 'Businesses', icon: 'Building2' },
   { path: '/calls', label: 'Calls', icon: 'Phone' },
+  { path: '/calls/folders', label: 'Call Folders', icon: 'Folder' },
   { path: '/followups', label: 'Follow Ups', icon: 'Calendar' },
   { path: '/analytics', label: 'Analytics', icon: 'BarChart3', roles: ['admin', 'manager'] },
   { path: '/leaderboard', label: 'Leaderboard', icon: 'Trophy' },

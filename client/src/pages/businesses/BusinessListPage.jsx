@@ -9,6 +9,7 @@ import {
 } from '../../components/ui/index'
 import { getStatusColor, getStatusLabel } from '../../utils/formatters'
 import { BUSINESS_STATUSES, PRIORITIES } from '../../utils/constants'
+import { useAuth } from '../../context/AuthContext'
 import BusinessFormModal from '../../components/business/BusinessFormModal'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -18,7 +19,7 @@ const PriorityDot = ({ priority }) => {
   return <span className={`w-2 h-2 rounded-full inline-block ${colors[priority] || 'bg-slate-300'}`} />
 }
 
-const BusinessCard = ({ business, onEdit, onDelete }) => (
+const BusinessCard = ({ business, onEdit, onDelete, isAdmin }) => (
   <div className="card hover:shadow-card-hover transition-shadow">
     <div className="p-4">
       <div className="flex items-start justify-between gap-2">
@@ -35,19 +36,21 @@ const BusinessCard = ({ business, onEdit, onDelete }) => (
           <Badge variant={getStatusColor(business.status).replace('badge-', '')}>
             {getStatusLabel(business.status)}
           </Badge>
-          <div className="relative group/menu">
-            <button className="p-1 rounded hover:bg-slate-100 text-slate-400">
-              <MoreVertical size={14} />
-            </button>
-            <div className="absolute right-0 top-6 bg-white border border-slate-200 rounded-lg shadow-card-hover z-10 py-1 w-32 hidden group-hover/menu:block">
-              <button onClick={() => onEdit(business)} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                <Edit size={12} /> Edit
+          {isAdmin && (
+            <div className="relative group/menu">
+              <button className="p-1 rounded hover:bg-slate-100 text-slate-400">
+                <MoreVertical size={14} />
               </button>
-              <button onClick={() => onDelete(business)} className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2">
-                <Trash2 size={12} /> Delete
-              </button>
+              <div className="absolute right-0 top-6 bg-white border border-slate-200 rounded-lg shadow-card-hover z-10 py-1 w-32 hidden group-hover/menu:block">
+                <button onClick={() => onEdit(business)} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                  <Edit size={12} /> Edit
+                </button>
+                <button onClick={() => onDelete(business)} className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2">
+                  <Trash2 size={12} /> Delete
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -100,6 +103,8 @@ const BusinessCard = ({ business, onEdit, onDelete }) => (
 )
 
 const BusinessListPage = () => {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -134,9 +139,11 @@ const BusinessListPage = () => {
         title="Businesses"
         description={`${pagination.total} businesses in your CRM`}
         actions={
-          <Button onClick={() => setShowForm(true)}>
-            <Plus size={15} /> Add Business
-          </Button>
+          isAdmin && (
+            <Button onClick={() => setShowForm(true)}>
+              <Plus size={15} /> Add Business
+            </Button>
+          )
         }
       />
 
@@ -181,7 +188,13 @@ const BusinessListPage = () => {
           icon={<Building2 size={48} />}
           title="No businesses found"
           description={search ? 'Try adjusting your search or filters' : 'Add your first business to get started'}
-          action={<Button onClick={() => setShowForm(true)}><Plus size={15} /> Add Business</Button>}
+          action={
+            isAdmin && (
+              <Button onClick={() => setShowForm(true)}>
+                <Plus size={15} /> Add Business
+              </Button>
+            )
+          }
         />
       ) : (
         <>
@@ -192,6 +205,7 @@ const BusinessListPage = () => {
                 business={b}
                 onEdit={(b) => { setEditBusiness(b); setShowForm(true) }}
                 onDelete={setDeleteTarget}
+                isAdmin={isAdmin}
               />
             ))}
           </div>

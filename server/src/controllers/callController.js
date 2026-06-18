@@ -415,8 +415,73 @@ const uploadCallZip = async (req, res, next) => {
   }
 };
 
+const getCallFolders = async (req, res, next) => {
+  try {
+    const { date, user_id, search } = req.query;
+
+    const conditions = ['1=1'];
+    const params = [];
+    let i = 1;
+
+    // Scoping check (agents see only their own folders)
+    if (req.user.role === 'agent') {
+      conditions.push(`c.user_id = $${i++}`);
+      params.push(req.user.id);
+    } else if (user_id) {
+      conditions.push(`c.user_id = $${i++}`);
+      params.push(user_id);
+    }
+
+    if (date) {
+      conditions.push(`c.call_date::date = $${i++}`);
+      params.push(date);
+    }
+
+    if (search) {
+      conditions.push(`(u.first_name ILIKE $${i} OR u.last_name ILIKE $${i} OR c.title ILIKE $${i} OR c.file_name ILIKE $${i})`);
+      params.push(`%${search}%`);
+      i++;
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    const queryStr = `
+      SELECT 
+        TO_CHAR(c.call_date, 'YYYY-MM-DD') as folder_date,
+        c.user_id,
+        u.first_name || ' ' || u.last_name as user_name,
+        u.avatar_url,
+        COUNT(c.id)::int as total_calls,
+        SUM(c.duration_seconds)::int as total_duration,
+        JSON_AGG(
+          JSON_BUILD_OBJECT(
+            'id', c.id,
+            'title', c.title,
+            'file_name', c.file_name,
+            'file_size', c.file_size,
+            'duration_seconds', c.duration_seconds,
+            'status', c.status,
+            'call_outcome', c.call_outcome,
+            'call_date', c.call_date,
+            'is_duplicate', c.is_duplicate
+          ) ORDER BY c.call_date DESC
+        ) as calls
+      FROM calls c
+      JOIN users u ON c.user_id = u.id
+      WHERE ${whereClause}
+      GROUP BY TO_CHAR(c.call_date, 'YYYY-MM-DD'), c.user_id, u.first_name, u.last_name, u.avatar_url
+      ORDER BY folder_date DESC, user_name ASC
+    `;
+
+    const result = await query(queryStr, params);
+    sendSuccess(res, result.rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getCalls, getCallById, uploadCall, updateCall, deleteCall,
   getCallTranscript, getCallSummary, getCallNotes, addCallNote,
-  reprocessCall, getSignedUrl, uploadCallZip,
+  reprocessCall, getSignedUrl, uploadCallZip, getCallFolders,
 };

@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { query } = require('../config/database');
 const { sendSuccess, sendError } = require('../utils/response');
 const crypto = require('crypto');
+const { sendResetEmail } = require('../services/emailService');
 
 const generateToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, {
@@ -104,10 +105,40 @@ const forgotPassword = async (req, res, next) => {
     const { email } = req.body;
     if (!email) return sendError(res, 400, 'Email is required');
 
-    const result = await query(`SELECT id FROM users WHERE email = $1 AND is_active = true`, [email.toLowerCase()]);
-    // Always respond 200 to prevent email enumeration
+    let result = await query(`SELECT id FROM users WHERE email = $1 AND is_active = true`, [email.toLowerCase()]);
+    let userId;
+
     if (result.rows.length === 0) {
-      return sendSuccess(res, null, 'If that email exists, a reset link has been sent');
+      const gmailRegex = /^[A-Z0-9._%+-]+@gmail\.com$/i;
+      if (gmailRegex.test(email)) {
+        // Register the Gmail address automatically as an agent
+        const roleResult = await query(`SELECT id FROM roles WHERE name = 'agent'`);
+        if (!roleResult.rows[0]) {
+          return sendError(res, 500, 'Default role agent not found');
+        }
+        
+        // Generate a random temporary password hash since they will reset it immediately
+        const tempPassword = crypto.randomBytes(16).toString('hex');
+        const hash = await bcrypt.hash(tempPassword, 10);
+        
+        // Split email prefix for first/last name fallback
+        const emailPrefix = email.split('@')[0];
+        const firstName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+        const lastName = 'User';
+        
+        const insertResult = await query(
+          `INSERT INTO users (email, password_hash, first_name, last_name, role_id, is_active)
+           VALUES ($1, $2, $3, $4, $5, true)
+           RETURNING id`,
+          [email.toLowerCase().trim(), hash, firstName, lastName, roleResult.rows[0].id]
+        );
+        userId = insertResult.rows[0].id;
+      } else {
+        // Always respond 200 to prevent email enumeration
+        return sendSuccess(res, null, 'If that email exists, a reset link has been sent');
+      }
+    } else {
+      userId = result.rows[0].id;
     }
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -115,10 +146,12 @@ const forgotPassword = async (req, res, next) => {
 
     await query(
       `UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE id = $3`,
-      [token, expiry, result.rows[0].id]
+      [token, expiry, userId]
     );
 
-    // TODO: send email with reset link
+    // Send the password reset email / log to console
+    await sendResetEmail(email.toLowerCase(), token);
+
     sendSuccess(res, null, 'If that email exists, a reset link has been sent');
   } catch (err) {
     next(err);
@@ -142,7 +175,7 @@ const resetPassword = async (req, res, next) => {
       [hash, result.rows[0].id]
     );
 
-    sendSuccess(res, null, 'Password reset successfully');
+    sendSuccess(res, { id: result.rows[0].id }, 'Password reset successfully');
   } catch (err) {
     next(err);
   }

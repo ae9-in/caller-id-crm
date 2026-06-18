@@ -46,13 +46,19 @@ const RegisterPage = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+    <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Create your account</h1>
         <p className="text-slate-500 text-sm mt-1">Get started with Call Intelligence CRM</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+        {/* Dummy inputs to prevent browser autofill */}
+        <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '1px', height: '1px', overflow: 'hidden' }}>
+          <input type="text" name="prevent_autofill_email" tabIndex="-1" autoComplete="new-password" />
+          <input type="password" name="prevent_autofill_password" tabIndex="-1" autoComplete="new-password" />
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <Input
             label="First Name"
@@ -61,6 +67,7 @@ const RegisterPage = () => {
             value={form.first_name}
             onChange={(e) => setForm({ ...form, first_name: e.target.value })}
             required
+            autoComplete="new-password"
           />
           <Input
             label="Last Name"
@@ -69,6 +76,7 @@ const RegisterPage = () => {
             value={form.last_name}
             onChange={(e) => setForm({ ...form, last_name: e.target.value })}
             required
+            autoComplete="new-password"
           />
         </div>
 
@@ -79,6 +87,7 @@ const RegisterPage = () => {
           value={form.email}
           onChange={(e) => setForm({ ...form, email: e.target.value })}
           required
+          autoComplete="new-password"
         />
 
         <Input
@@ -87,6 +96,7 @@ const RegisterPage = () => {
           placeholder="e.g. +91 98765 43210"
           value={form.phone}
           onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          autoComplete="new-password"
         />
 
         <Input
@@ -96,6 +106,7 @@ const RegisterPage = () => {
           value={form.password}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
           required
+          autoComplete="new-password"
         />
 
         <Input
@@ -105,6 +116,7 @@ const RegisterPage = () => {
           value={form.confirmPassword}
           onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
           required
+          autoComplete="new-password"
         />
 
         {error && (

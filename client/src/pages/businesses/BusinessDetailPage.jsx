@@ -15,6 +15,7 @@ import {
   formatDate, formatDateTime, formatRelative, formatDuration,
   getStatusColor, getStatusLabel, getOutcomeColor
 } from '../../utils/formatters'
+import { useAuth } from '../../context/AuthContext'
 import BusinessFormModal from '../../components/business/BusinessFormModal'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -67,6 +68,8 @@ const TimelineItem = ({ activity }) => {
 
 const BusinessDetailPage = () => {
   const { id } = useParams()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('overview')
   const [showEdit, setShowEdit] = useState(false)
@@ -114,9 +117,11 @@ const BusinessDetailPage = () => {
             <p className="text-slate-500 text-sm mt-1">{business.category} · {business.industry}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setShowEdit(true)}>
-              <Edit size={14} /> Edit
-            </Button>
+            {isAdmin && (
+              <Button variant="secondary" size="sm" onClick={() => setShowEdit(true)}>
+                <Edit size={14} /> Edit
+              </Button>
+            )}
             <Link to="/calls/upload" state={{ business_id: id, business_name: business.name }}>
               <Button size="sm"><Phone size={14} /> Upload Call</Button>
             </Link>

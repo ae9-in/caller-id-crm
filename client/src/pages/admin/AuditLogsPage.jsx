@@ -1,18 +1,56 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { adminService } from '../../services/index'
-import { usePaginatedApi } from '../../hooks/index'
-import { PageHeader, Card, LoadingState, EmptyState, Pagination, Select, SearchInput } from '../../components/ui/index'
+import { usePaginatedApi, useDebounce } from '../../hooks/index'
+import { PageHeader, Card, LoadingState, EmptyState, Pagination, Select } from '../../components/ui/index'
 import { formatDateTime } from '../../utils/formatters'
-import { FileText } from 'lucide-react'
+import { FileText, Calendar, Search, X } from 'lucide-react'
 
 const AuditLogsPage = () => {
   const { data, pagination, loading, params, updateParams, goToPage } = usePaginatedApi(adminService.getAuditLogs, {})
+  const [searchInput, setSearchInput] = useState('')
+  const debouncedSearch = useDebounce(searchInput, 400)
+
+  useEffect(() => {
+    updateParams({ search: debouncedSearch })
+  }, [debouncedSearch])
 
   return (
     <div className="space-y-5 fade-in">
       <PageHeader title="Audit Logs" description="Track all system actions and changes" />
 
-      <div className="flex gap-3 flex-wrap">
+      {/* Filter Control Bar */}
+      <div className="bg-[var(--color-surface)] border border-slate-200 dark:border-zinc-800 p-4 rounded-xl flex flex-wrap gap-4 items-center">
+        {/* Search Performed By */}
+        <div className="relative min-w-[240px] flex-1 sm:flex-initial">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={17} />
+          <input
+            type="text"
+            placeholder="Search Performed By..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+        </div>
+
+        {/* Date Filter */}
+        <div className="relative min-w-[180px]">
+          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={17} />
+          <input
+            type="date"
+            value={params.date || ''}
+            onChange={(e) => updateParams({ date: e.target.value })}
+            onClick={(e) => {
+              try {
+                e.target.showPicker()
+              } catch (err) {
+                console.error('showPicker not supported:', err)
+              }
+            }}
+            className="w-full pl-10 pr-4 py-2 text-sm bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer"
+          />
+        </div>
+
+        {/* Action Type Dropdown */}
         <Select
           options={[
             { value: '', label: 'All Actions' },
@@ -25,6 +63,8 @@ const AuditLogsPage = () => {
           onChange={(e) => updateParams({ action: e.target.value })}
           className="min-w-[150px]"
         />
+
+        {/* Resource Type Dropdown */}
         <Select
           options={[
             { value: '', label: 'All Resources' },
@@ -37,6 +77,20 @@ const AuditLogsPage = () => {
           onChange={(e) => updateParams({ resource_type: e.target.value })}
           className="min-w-[150px]"
         />
+
+        {/* Clear Filters Button */}
+        {(searchInput || params.date || params.action || params.resource_type) && (
+          <button
+            onClick={() => {
+              setSearchInput('')
+              updateParams({ search: '', date: '', action: '', resource_type: '' })
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-500 dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+          >
+            <X size={14} />
+            Clear Filters
+          </button>
+        )}
       </div>
 
       {loading ? <LoadingState /> : !data?.length ? (

@@ -7,12 +7,14 @@ import AuthLayout from '../layouts/AuthLayout'
 import LoginPage from '../pages/auth/LoginPage'
 import RegisterPage from '../pages/auth/RegisterPage'
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage'
+import ResetPasswordPage from '../pages/auth/ResetPasswordPage'
 
 // App pages
 import DashboardPage from '../pages/dashboard/DashboardPage'
 import BusinessListPage from '../pages/businesses/BusinessListPage'
 import BusinessDetailPage from '../pages/businesses/BusinessDetailPage'
 import CallListPage from '../pages/calls/CallListPage'
+import CallFoldersPage from '../pages/calls/CallFoldersPage'
 import CallDetailPage from '../pages/calls/CallDetailPage'
 import UploadCallPage from '../pages/calls/UploadCallPage'
 import FollowupListPage from '../pages/followups/FollowupListPage'
@@ -43,6 +45,7 @@ const AppRouter = () => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
 
         {/* Protected app routes */}
@@ -51,6 +54,7 @@ const AppRouter = () => {
           <Route path="/businesses" element={<BusinessListPage />} />
           <Route path="/businesses/:id" element={<BusinessDetailPage />} />
           <Route path="/calls" element={<CallListPage />} />
+          <Route path="/calls/folders" element={<CallFoldersPage />} />
           <Route path="/calls/upload" element={<UploadCallPage />} />
           <Route path="/calls/:id" element={<CallDetailPage />} />
           <Route path="/followups" element={<FollowupListPage />} />
@@ -59,7 +63,7 @@ const AppRouter = () => {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           {/* Admin */}
-          <Route path="/admin/users" element={<ProtectedRoute roles={['admin']}><UsersPage /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute roles={['admin', 'manager']}><UsersPage /></ProtectedRoute>} />
           <Route path="/admin/ai-settings" element={<ProtectedRoute roles={['admin']}><AISettingsPage /></ProtectedRoute>} />
           <Route path="/admin/audit-logs" element={<ProtectedRoute roles={['admin']}><AuditLogsPage /></ProtectedRoute>} />
         </Route>

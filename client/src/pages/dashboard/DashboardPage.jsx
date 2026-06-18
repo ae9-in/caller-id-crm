@@ -23,26 +23,38 @@ const OUTCOME_COLORS = {
   unknown: '#e2e8f0',
 }
 
-const MetricCard = ({ icon: Icon, label, value, sub, color = 'blue', trend }) => (
-  <div className="metric-card">
-    <div className="flex items-center justify-between">
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-${color}-50`}>
-        <Icon size={20} className={`text-${color}-600`} />
+const COLOR_MAPS = {
+  blue: { bg: 'bg-blue-50 dark:bg-blue-950/20', text: 'text-blue-600 dark:text-blue-400' },
+  violet: { bg: 'bg-violet-50 dark:bg-violet-950/20', text: 'text-violet-600 dark:text-violet-400' },
+  emerald: { bg: 'bg-emerald-50 dark:bg-emerald-950/20', text: 'text-emerald-600 dark:text-emerald-400' },
+  amber: { bg: 'bg-amber-50 dark:bg-amber-950/20', text: 'text-amber-600 dark:text-amber-400' },
+  purple: { bg: 'bg-purple-50 dark:bg-purple-950/20', text: 'text-purple-600 dark:text-purple-400' },
+  slate: { bg: 'bg-slate-100 dark:bg-zinc-800', text: 'text-slate-600 dark:text-zinc-400' },
+}
+
+const MetricCard = ({ icon: Icon, label, value, sub, color = 'blue', trend }) => {
+  const colorClasses = COLOR_MAPS[color] || COLOR_MAPS.blue
+  return (
+    <div className="metric-card group">
+      <div className="flex items-center justify-between">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-300 group-hover:scale-105 ${colorClasses.bg}`}>
+          <Icon size={20} className={`transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6 ${colorClasses.text}`} />
+        </div>
+        {trend !== undefined && (
+          <span className={`flex items-center gap-0.5 text-xs font-medium ${trend >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+            <ArrowUpRight size={12} className={trend < 0 ? 'rotate-180' : ''} />
+            {Math.abs(trend)}%
+          </span>
+        )}
       </div>
-      {trend !== undefined && (
-        <span className={`flex items-center gap-0.5 text-xs font-medium ${trend >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-          <ArrowUpRight size={12} className={trend < 0 ? 'rotate-180' : ''} />
-          {Math.abs(trend)}%
-        </span>
-      )}
+      <div>
+        <p className="text-2xl font-bold text-slate-900">{value}</p>
+        <p className="text-sm text-slate-500">{label}</p>
+        {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+      </div>
     </div>
-    <div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-sm text-slate-500">{label}</p>
-      {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
-    </div>
-  </div>
-)
+  )
+}
 
 const ActivityItem = ({ activity }) => {
   const typeConfig = {

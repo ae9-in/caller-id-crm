@@ -2,6 +2,7 @@ import api from './api'
 
 export const callService = {
   getAll: (params) => api.get('/calls', { params }),
+  getCallFolders: (params) => api.get('/calls/folders', { params }),
   getById: (id) => api.get(`/calls/${id}`),
   upload: (formData, onProgress) =>
     api.post('/calls/upload', formData, {

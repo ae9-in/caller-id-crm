@@ -3,13 +3,13 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Building2, Phone, Calendar, BarChart3,
   Trophy, Search, Users, Cpu, FileText, ChevronRight,
-  LogOut, Settings
+  LogOut, Settings, Folder
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { NAV_ITEMS, ADMIN_NAV } from '../../utils/constants'
 import clsx from 'clsx'
 
-const ICONS = { LayoutDashboard, Building2, Phone, Calendar, BarChart3, Trophy, Search, Users, Cpu, FileText }
+const ICONS = { LayoutDashboard, Building2, Phone, Calendar, BarChart3, Trophy, Search, Users, Cpu, FileText, Folder }
 
 const NavItem = ({ item, open, index, isAnimating }) => {
   const Icon = ICONS[item.icon]
@@ -43,7 +43,7 @@ const Sidebar = ({ open }) => {
   }, [open])
 
   const clientNav = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user?.role))
-  const adminNav = isAdmin() ? ADMIN_NAV : []
+  const adminNav = isAdmin() ? ADMIN_NAV : (user?.role === 'manager' ? [{ path: '/admin/users', label: 'User Management', icon: 'Users' }] : [])
 
   return (
     <aside
@@ -76,7 +76,7 @@ const Sidebar = ({ open }) => {
           <NavItem key={item.path} item={item} open={open} index={idx} isAnimating={isAnimating} />
         ))}
 
-        {isAdmin() && (
+        {(isAdmin() || user?.role === 'manager') && (
           <>
             <div className="pt-4 pb-2 px-3">
               <p 

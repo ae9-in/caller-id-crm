@@ -258,8 +258,50 @@ const createTag = async (req, res, next) => {
   }
 };
 
+const getBusinessesForAssignment = async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT id, name, assigned_user_id FROM businesses ORDER BY name ASC`
+    );
+    sendSuccess(res, result.rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const assignBusinessesToUser = async (req, res, next) => {
+  try {
+    const userId = req.params.userId;
+    const { businessIds } = req.body; // Array of business IDs
+
+    if (!Array.isArray(businessIds)) {
+      return sendError(res, 400, 'businessIds must be an array');
+    }
+
+    // 1. Unassign all businesses currently assigned to this user
+    await query(
+      `UPDATE businesses SET assigned_user_id = NULL, updated_at = NOW() WHERE assigned_user_id = $1`,
+      [userId]
+    );
+
+    // 2. Assign the new ones if the array is not empty
+    if (businessIds.length > 0) {
+      const placeholders = businessIds.map((_, index) => `$${index + 2}`).join(', ');
+      await query(
+        `UPDATE businesses SET assigned_user_id = $1, updated_at = NOW() WHERE id IN (${placeholders})`,
+        [userId, ...businessIds]
+      );
+    }
+
+    sendSuccess(res, null, 'Businesses assigned successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getBusinesses, getBusinessById, createBusiness, updateBusiness,
   deleteBusiness, getBusinessTimeline, getBusinessCalls,
   getBusinessNotes, addBusinessNote, getTags, createTag,
+  getBusinessesForAssignment, assignBusinessesToUser,
 };

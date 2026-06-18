@@ -54,6 +54,10 @@ const createUser = async (req, res, next) => {
       return sendError(res, 400, 'Email, password, first name, last name, and role are required');
     }
 
+    if (req.user.role !== 'admin' && role !== 'agent') {
+      return sendError(res, 403, 'Only admins can assign non-agent roles');
+    }
+
     const roleResult = await query(`SELECT id FROM roles WHERE name = $1`, [role]);
     if (!roleResult.rows[0]) return sendError(res, 400, 'Invalid role');
 
@@ -77,6 +81,21 @@ const createUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const { first_name, last_name, phone, is_active, role } = req.body;
+
+    if (req.user.role !== 'admin') {
+      const userResult = await query(
+        `SELECT r.name as role FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
+        [req.params.id]
+      );
+      if (!userResult.rows[0]) return sendError(res, 404, 'User not found');
+      if (userResult.rows[0].role !== 'agent') {
+        return sendError(res, 403, 'Managers can only edit agents');
+      }
+      if (role !== undefined && role !== 'agent') {
+        return sendError(res, 403, 'Only admins can change user roles');
+      }
+    }
+
     const updates = [];
     const params = [];
     let i = 1;
@@ -112,6 +131,18 @@ const updateUser = async (req, res, next) => {
 const deleteUser = async (req, res, next) => {
   try {
     if (req.params.id === req.user.id) return sendError(res, 400, 'Cannot delete your own account');
+
+    if (req.user.role !== 'admin') {
+      const userResult = await query(
+        `SELECT r.name as role FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
+        [req.params.id]
+      );
+      if (!userResult.rows[0]) return sendError(res, 404, 'User not found');
+      if (userResult.rows[0].role !== 'agent') {
+        return sendError(res, 403, 'Managers can only deactivate agents');
+      }
+    }
+
     const result = await query(`UPDATE users SET is_active = false WHERE id = $1 RETURNING id`, [req.params.id]);
     if (!result.rows[0]) return sendError(res, 404, 'User not found');
     sendSuccess(res, null, 'User deactivated');

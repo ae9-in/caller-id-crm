@@ -36,7 +36,13 @@ const LoginPage = () => {
 
 
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+        {/* Dummy inputs to prevent browser autofill */}
+        <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '1px', height: '1px', overflow: 'hidden' }}>
+          <input type="text" name="prevent_autofill_email" tabIndex="-1" autoComplete="new-password" />
+          <input type="password" name="prevent_autofill_password" tabIndex="-1" autoComplete="new-password" />
+        </div>
+
         <Input
           label="Email address"
           type="email"
@@ -44,7 +50,7 @@ const LoginPage = () => {
           value={form.email}
           onChange={(e) => setForm({ ...form, email: e.target.value })}
           required
-          autoComplete="email"
+          autoComplete="new-password"
         />
         <Input
           label="Password"
@@ -53,7 +59,7 @@ const LoginPage = () => {
           value={form.password}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
           required
-          autoComplete="current-password"
+          autoComplete="new-password"
         />
 
         {error && (

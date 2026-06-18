@@ -12,4 +12,6 @@ export const businessService = {
   addNote: (id, content) => api.post(`/businesses/${id}/notes`, { content }),
   getTags: () => api.get('/businesses/tags'),
   createTag: (data) => api.post('/businesses/tags', data),
+  getAllForAssignment: () => api.get('/businesses/all-assignment'),
+  assignMultiple: (userId, businessIds) => api.put(`/businesses/assign-multiple/${userId}`, { businessIds }),
 }

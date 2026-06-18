@@ -459,3 +459,43 @@ audio::-webkit-media-controls-panel {
   animation: ping-slower 2.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
   animation-delay: 0.5s;
 }
+
+/* Call Folder Drawer Slide and Micro Voice Wave animations */
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.animate-slide-left {
+  animation: slideLeft 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes microWave {
+  0%, 100% { transform: scaleY(0.4); }
+  50%      { transform: scaleY(1.0); }
+}
+
+.animate-wave-1 {
+  animation: microWave 0.7s ease-in-out infinite;
+  transform-origin: bottom;
+}
+.animate-wave-2 {
+  animation: microWave 0.7s ease-in-out infinite;
+  animation-delay: 0.15s;
+  transform-origin: bottom;
+}
+.animate-wave-3 {
+  animation: microWave 0.7s ease-in-out infinite;
+  animation-delay: 0.3s;
+  transform-origin: bottom;
+}
+
+/* Date picker calendar indicator styles & dark mode compatibility */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px;
+}
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(0.9);
+}

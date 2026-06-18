@@ -5,7 +5,7 @@ const { getPagination } = require('../utils/helpers');
 const getAuditLogs = async (req, res, next) => {
   try {
     const { page, limit, offset } = getPagination(req.query);
-    const { user_id, action, resource_type } = req.query;
+    const { user_id, action, resource_type, date, search } = req.query;
     const conditions = ['1=1'];
     const params = [];
     let i = 1;
@@ -13,16 +13,24 @@ const getAuditLogs = async (req, res, next) => {
     if (user_id) { conditions.push(`al.user_id = $${i++}`); params.push(user_id); }
     if (action) { conditions.push(`al.action ILIKE $${i++}`); params.push(`%${action}%`); }
     if (resource_type) { conditions.push(`al.resource_type = $${i++}`); params.push(resource_type); }
+    if (date) { conditions.push(`al.created_at::date = $${i++}`); params.push(date); }
+    if (search) {
+      conditions.push(`(u.first_name ILIKE $${i} OR u.last_name ILIKE $${i} OR u.email ILIKE $${i})`);
+      params.push(`%${search}%`);
+      i++;
+    }
 
     const whereClause = conditions.join(' AND ');
     const [dataResult, countResult] = await Promise.all([
       query(
-        `SELECT al.*, u.first_name || ' ' || u.last_name as user_name, u.email
+        `SELECT al.*, 
+                COALESCE(NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), 'Unknown User') as user_name,
+                COALESCE(u.email, 'N/A') as email
          FROM audit_logs al LEFT JOIN users u ON al.user_id = u.id
          WHERE ${whereClause} ORDER BY al.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
         [...params, limit, offset]
       ),
-      query(`SELECT COUNT(*) FROM audit_logs al WHERE ${whereClause}`, params),
+      query(`SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON al.user_id = u.id WHERE ${whereClause}`, params),
     ]);
 
     sendPaginated(res, dataResult.rows, parseInt(countResult.rows[0].count), page, limit);

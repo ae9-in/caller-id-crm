@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Plus, Users, Edit, Trash2, Shield } from 'lucide-react'
+import { Plus, Users, Edit, Trash2, Shield, Building2 } from 'lucide-react'
 import { userService } from '../../services/index'
+import { businessService } from '../../services/businessService'
 import { usePaginatedApi, useDebounce } from '../../hooks/index'
 import {
   Button, PageHeader, SearchInput, Badge, LoadingState,
@@ -8,11 +9,14 @@ import {
 } from '../../components/ui/index'
 import { formatDate } from '../../utils/formatters'
 import { ROLES } from '../../utils/constants'
+import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
 
 const ROLE_COLORS = { admin: 'danger', manager: 'info', agent: 'gray' }
 
 const UsersPage = () => {
+  const { user: currentUser } = useAuth()
+  const isSuperAdmin = currentUser?.role === 'admin'
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search)
   const [showForm, setShowForm] = useState(false)
@@ -21,6 +25,42 @@ const UsersPage = () => {
   const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', phone: '', role: 'agent' })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  const [assignUser, setAssignUser] = useState(null)
+  const [businesses, setBusinesses] = useState([])
+  const [selectedBusinessIds, setSelectedBusinessIds] = useState([])
+  const [loadingBusinesses, setLoadingBusinesses] = useState(false)
+  const [savingAssignments, setSavingAssignments] = useState(false)
+
+  const openAssignBusinesses = async (user) => {
+    setAssignUser(user)
+    setLoadingBusinesses(true)
+    try {
+      const response = await businessService.getAllForAssignment()
+      setBusinesses(response.data.data || [])
+      const assigned = (response.data.data || [])
+        .filter((b) => b.assigned_user_id === user.id)
+        .map((b) => b.id)
+      setSelectedBusinessIds(assigned)
+    } catch (err) {
+      toast.error('Failed to load businesses')
+    } finally {
+      setLoadingBusinesses(false)
+    }
+  }
+
+  const handleSaveAssignments = async () => {
+    setSavingAssignments(true)
+    try {
+      await businessService.assignMultiple(assignUser.id, selectedBusinessIds)
+      toast.success('Businesses assigned successfully')
+      setAssignUser(null)
+    } catch (err) {
+      toast.error('Failed to save assignments')
+    } finally {
+      setSavingAssignments(false)
+    }
+  }
 
   const { data, pagination, loading, updateParams, goToPage, refetch } = usePaginatedApi(
     userService.getAll, {}
@@ -91,10 +131,23 @@ const UsersPage = () => {
                   <td className="text-xs text-slate-500">{formatDate(user.last_login) || '—'}</td>
                   <td className="text-xs text-slate-500">{formatDate(user.created_at)}</td>
                   <td>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEdit(user)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Edit size={14} /></button>
-                      <button onClick={() => setDeleteTarget(user)} className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
-                    </div>
+                    {(isSuperAdmin || user.role === 'agent') && (
+                      <div className="flex items-center gap-1">
+                        {isSuperAdmin && (
+                          <button 
+                            onClick={() => openAssignBusinesses(user)} 
+                            title="Assign Businesses"
+                            className="p-1.5 rounded hover:bg-brand-50 text-slate-400 hover:text-brand-600"
+                          >
+                            <Building2 size={14} />
+                          </button>
+                        )}
+                        <button onClick={() => openEdit(user)} className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Edit size={14} /></button>
+                        {user.id !== currentUser?.id && (
+                          <button onClick={() => setDeleteTarget(user)} className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -120,7 +173,16 @@ const UsersPage = () => {
           {!editUser && <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />}
           {!editUser && <Input label="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Min 8 characters" />}
           <Input label="Phone" value={form.phone || ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          <Select label="Role" options={ROLES} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} />
+          {isSuperAdmin ? (
+            <Select label="Role" options={ROLES} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} />
+          ) : (
+            <div className="flex flex-col">
+              <label className="form-label text-slate-500 text-xs">Role</label>
+              <div className="px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-600 text-sm capitalize">
+                {form.role}
+              </div>
+            </div>
+          )}
           {editUser && (
             <Select label="Status" options={[{ value: true, label: 'Active' }, { value: false, label: 'Inactive' }]}
               value={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.value === 'true' })} />
@@ -131,6 +193,52 @@ const UsersPage = () => {
       <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title="Deactivate User" message={`Deactivate ${deleteTarget?.first_name} ${deleteTarget?.last_name}? They will lose access.`}
         confirmLabel="Deactivate" loading={deleting} />
+
+      <Modal 
+        open={!!assignUser} 
+        onClose={() => setAssignUser(null)} 
+        title={`Assign Businesses to ${assignUser?.first_name} ${assignUser?.last_name || ''}`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAssignUser(null)} disabled={savingAssignments}>Cancel</Button>
+            <Button onClick={handleSaveAssignments} disabled={savingAssignments || loadingBusinesses}>
+              {savingAssignments ? <Spinner size="sm" /> : 'Save'}
+            </Button>
+          </>
+        }
+      >
+        {loadingBusinesses ? (
+          <div className="flex justify-center py-6"><Spinner size="md" /></div>
+        ) : businesses.length === 0 ? (
+          <p className="text-sm text-slate-500 text-center py-4">No businesses found. Create businesses first.</p>
+        ) : (
+          <div className="space-y-2 max-h-90 overflow-y-auto pr-1">
+            <p className="text-xs text-slate-500 mb-3">Select the businesses you want to assign to this user:</p>
+            {businesses.map((b) => (
+              <label key={b.id} className="flex items-center gap-3 p-2 rounded hover:bg-slate-50 border border-slate-100 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedBusinessIds.includes(b.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedBusinessIds([...selectedBusinessIds, b.id])
+                    } else {
+                      setSelectedBusinessIds(selectedBusinessIds.filter((id) => id !== b.id))
+                    }
+                  }}
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-800">{b.name}</p>
+                  {b.assigned_user_id && b.assigned_user_id !== assignUser?.id && (
+                    <span className="text-[10px] text-amber-600 font-medium">Currently assigned to another user</span>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
