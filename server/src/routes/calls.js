@@ -17,7 +17,7 @@ router.get('/folders', getCallFolders);
 router.post('/upload', requireAgent, upload.single('audio'), handleMulterError, auditLogger('create', 'call'), uploadCall);
 router.post('/upload-zip', requireAgent, uploadZip.single('zip'), handleMulterError, auditLogger('create', 'call'), uploadCallZip);
 router.get('/:id', getCallById);
-router.put('/:id', requireAgent, auditLogger('update', 'call'), updateCall);
+router.put('/:id', requireManager, auditLogger('update', 'call'), updateCall);
 router.delete('/:id', requireManager, auditLogger('delete', 'call'), deleteCall);
 
 router.get('/:id/transcript', getCallTranscript);

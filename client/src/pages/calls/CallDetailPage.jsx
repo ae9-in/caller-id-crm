@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 import {
   ArrowLeft, Download, RefreshCw, Clock, User, Building2,
-  Mic, Brain, Copy, CheckCheck, FileText, MessageSquare
+  Mic, Brain, Copy, CheckCheck, FileText, MessageSquare, Trash2
 } from 'lucide-react'
 import { callService } from '../../services/callService'
 import { useApi } from '../../hooks/index'
@@ -43,10 +44,14 @@ const SpeakerBubble = ({ segment }) => (
 
 const CallDetailPage = () => {
   const { id } = useParams()
+  const { isManager } = useAuth()
+  const navigate = useNavigate()
+
   const [activeTab, setActiveTab] = useState('transcript')
   const [noteContent, setNoteContent] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const { data: call, loading: callLoading } = useApi(() => callService.getById(id), [id])
   const { data: transcript, loading: tLoading } = useApi(() => callService.getTranscript(id), [id])
@@ -78,6 +83,22 @@ const CallDetailPage = () => {
     toast.success('Reprocessing queued')
   }
 
+  const handleDeleteCall = async () => {
+    if (!window.confirm('Are you sure you want to delete this call recording? This action cannot be undone.')) {
+      return
+    }
+    setDeleting(true)
+    try {
+      await callService.delete(id)
+      toast.success('Call recording deleted successfully')
+      navigate('/calls')
+    } catch (err) {
+      toast.error('Failed to delete call recording')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (callLoading) return <LoadingState />
   if (!call) return <div className="text-center py-16 text-slate-500">Call not found</div>
 
@@ -105,11 +126,16 @@ const CallDetailPage = () => {
               {call.is_duplicate && <Badge variant="warning">Possible Duplicate</Badge>}
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={handleReprocess}>
-              <RefreshCw size={14} /> Reprocess
-            </Button>
-          </div>
+          {isManager() && (
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={handleReprocess}>
+                <RefreshCw size={14} /> Reprocess
+              </Button>
+              <Button variant="danger" size="sm" onClick={handleDeleteCall} disabled={deleting}>
+                <Trash2 size={14} /> Delete
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
