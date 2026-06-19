@@ -288,8 +288,9 @@ const uploadCallZip = async (req, res, next) => {
 
     const { business_id, audio_language, transcription_lang } = req.body;
     const path = require('path');
-const pLimit = require('p-limit').default;
+const pLimit = require('p-limit'); // v2.x CJS - exports function directly
 const AdmZip = require('adm-zip');
+
     
     let zip;
     try {

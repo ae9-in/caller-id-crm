@@ -2,7 +2,7 @@ const { query } = require('../config/database');
 const { transcribeAudio, generateSummary, analyzeSpeakers } = require('../services/aiService');
 const storageService = require('../services/storageService');
 const logger = require('../utils/logger');
-const pLimit = require('p-limit').default;
+const pLimit = require('p-limit'); // v2.x CJS - exports function directly
 
 const concurrency = process.env.TRANSCRIBE_CONCURRENCY ? parseInt(process.env.TRANSCRIBE_CONCURRENCY) : 4;
 const queueLimit = pLimit(concurrency);
