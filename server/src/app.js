@@ -1,3 +1,5 @@
+'use strict';
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -22,40 +24,47 @@ const adminRoutes = require('./routes/admin');
 
 const app = express();
 
+const isProd = process.env.NODE_ENV === 'production';
+
+// Trust Vercel's proxy (needed for correct IP in rate limiting)
+if (isProd) {
+  app.set('trust proxy', 1);
+}
+
 // Security
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, server-to-server)
-    if (!origin) return callback(null, true);
-    const allowedOrigins = [
-      process.env.APP_URL,
-      process.env.FRONTEND_URL,
-      'http://localhost:3000',
-      'http://localhost:5173',
-    ].filter(Boolean);
-    if (allowedOrigins.some(o => origin.startsWith(o))) {
-      return callback(null, true);
-    }
-    // Also allow any vercel.app subdomain for preview deployments
-    if (origin.endsWith('.vercel.app')) {
-      return callback(null, true);
-    }
-    return callback(null, true); // permissive for now — lock down after confirming URL
+    // Allow all origins for now — lock down after confirming your Vercel frontend URL
+    return callback(null, true);
   },
   credentials: true,
 }));
 
-// Rate limiting
-const isProd = process.env.NODE_ENV === 'production';
-app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: isProd ? 20 : 1000, message: { success: false, message: 'Too many requests' } }));
-app.use('/api', rateLimit({ windowMs: 1 * 60 * 1000, max: isProd ? 300 : 5000 }));
+// Rate limiting — use memory store (default), acceptable for serverless
+// Note: each serverless instance has its own memory, so this is per-instance
+app.use('/api/auth', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isProd ? 50 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests, please try again later.' },
+}));
+app.use('/api', rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: isProd ? 500 : 5000,
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
 
-// NOTE: Local /uploads folder is NOT available on Vercel (read-only FS).
-// Uploaded files should be served from S3 using signed URLs.
-// Keeping this only for local development fallback.
-if (process.env.NODE_ENV !== 'production') {
-  app.use('/uploads', require('express').static(require('path').join(__dirname, '../uploads')));
+// Local uploads only in development — Vercel filesystem is read-only
+if (!isProd) {
+  try {
+    const path = require('path');
+    app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+  } catch (e) {
+    logger.warn('[App] Could not serve local uploads:', e.message);
+  }
 }
 
 // Parsing & compression
@@ -68,9 +77,9 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
 }
 
-// Health check
+// Health check — always responds immediately (no DB query)
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '1.0.0' });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '1.0.0', env: process.env.NODE_ENV });
 });
 
 // API Routes

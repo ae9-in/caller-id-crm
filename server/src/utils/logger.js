@@ -1,6 +1,6 @@
 const winston = require('winston');
-const path = require('path');
 
+// Safe logger that never crashes the process
 const logger = winston.createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   format: winston.format.combine(
@@ -11,10 +11,11 @@ const logger = winston.createLogger({
   transports: [
     new winston.transports.Console({
       format: winston.format.combine(
-        winston.format.colorize(),
+        // No colorize in production — some environments don't support ANSI codes
+        ...(process.env.NODE_ENV !== 'production' ? [winston.format.colorize()] : []),
         winston.format.printf(({ timestamp, level, message, ...meta }) => {
-          const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : '';
-          return `${timestamp} [${level}]: ${message} ${metaStr}`;
+          const metaStr = Object.keys(meta).length ? ' ' + JSON.stringify(meta) : '';
+          return `${timestamp} [${level}]: ${message}${metaStr}`;
         })
       ),
     }),

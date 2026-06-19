@@ -1,7 +1,23 @@
 const { Pool } = require('pg');
 
-const poolConfig = process.env.DATABASE_URL
-  ? { connectionString: process.env.DATABASE_URL }
+// Strip channel_binding param — not supported by node-postgres, causes connection errors on Vercel
+const sanitizeDbUrl = (url) => {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    u.searchParams.delete('channel_binding');
+    return u.toString();
+  } catch (e) {
+    // fallback: simple string replace
+    return url.replace(/[&?]channel_binding=[^&]*/g, '').replace(/\?&/, '?');
+  }
+};
+
+const rawDbUrl = process.env.DATABASE_URL;
+const cleanDbUrl = sanitizeDbUrl(rawDbUrl);
+
+const poolConfig = cleanDbUrl
+  ? { connectionString: cleanDbUrl }
   : {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT) || 5432,
@@ -12,7 +28,7 @@ const poolConfig = process.env.DATABASE_URL
 
 // Auto-enable SSL for Neon DB or when explicitly requested
 if (
-  (process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('neon.tech') || process.env.DATABASE_URL.includes('sslmode=require'))) ||
+  (cleanDbUrl && (cleanDbUrl.includes('neon.tech') || cleanDbUrl.includes('sslmode=require'))) ||
   process.env.DB_SSL === 'true'
 ) {
   poolConfig.ssl = {
@@ -30,15 +46,16 @@ try {
 
 const pool = new Pool({
   ...poolConfig,
-  max: process.env.NODE_ENV === 'production' ? 5 : 20, // Serverless: use fewer connections
+  max: process.env.NODE_ENV === 'production' ? 3 : 20, // Serverless: minimal connections
+  min: 0,
   idleTimeoutMillis: 10000,
-  connectionTimeoutMillis: 10000, // 10s timeout for Neon cold starts
-  options: `-c timezone=${tz}`,
+  connectionTimeoutMillis: 15000, // 15s for Neon cold starts
+  options: `-c timezone=UTC`, // Always use UTC in DB — handle timezone in app layer
 });
 
 pool.on('error', (err) => {
-  // Do NOT call process.exit() — it crashes serverless functions
-  console.error('Unexpected error on idle pg client', err.message);
+  // DO NOT call process.exit() — it crashes serverless functions
+  console.error('[DB] Idle client error:', err.message);
 });
 
 const query = (text, params) => pool.query(text, params);

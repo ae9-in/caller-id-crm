@@ -2,8 +2,9 @@ const { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aw
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { s3Client, bucket } = require('../config/storage');
 const path = require('path');
-const fs = require('fs');
 const { format } = require('date-fns');
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const buildKey = (userId, businessId, fileName) => {
   const date = format(new Date(), 'yyyy/MM/dd');
@@ -12,17 +13,23 @@ const buildKey = (userId, businessId, fileName) => {
   return `recordings/${uid}/${date}/${Date.now()}_${sanitizedName}`;
 };
 
-const uploadFile = async (key, buffer, contentType) => {
-  // If no S3 bucket configured, return a placeholder URL
-  if (!process.env.AWS_S3_BUCKET && !process.env.R2_BUCKET) {
-    console.warn('[Storage] No bucket configured. File not uploaded to cloud.');
-    return null;
-  }
-
-  // If placeholders are present, save file locally
+const hasS3Config = () => {
   const accessKey = process.env.AWS_ACCESS_KEY_ID;
-  if (!accessKey || accessKey.includes('your_aws_access_key') || accessKey === '') {
+  const hasBucket = !!(process.env.AWS_S3_BUCKET || process.env.R2_BUCKET);
+  const hasValidKey = accessKey && !accessKey.includes('your_aws_access_key') && accessKey !== '';
+  return hasBucket && hasValidKey;
+};
+
+const uploadFile = async (key, buffer, contentType) => {
+  // In production (Vercel), never write to local disk — filesystem is read-only
+  if (!hasS3Config()) {
+    if (IS_PRODUCTION) {
+      console.warn('[Storage] No S3 configured in production. File not uploaded.');
+      return null;
+    }
+    // Development only: save locally
     try {
+      const fs = require('fs');
       const uploadDir = path.join(__dirname, '../../uploads');
       const fullPath = path.join(uploadDir, key);
       fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -31,7 +38,7 @@ const uploadFile = async (key, buffer, contentType) => {
       return `/uploads/${key}`;
     } catch (err) {
       console.error('[Storage] Local save failed:', err.message);
-      return `/uploads/${key}`;
+      return null;
     }
   }
 
@@ -42,12 +49,14 @@ const uploadFile = async (key, buffer, contentType) => {
       Body: buffer,
       ContentType: contentType,
     });
-
     await s3Client.send(command);
     return `https://${bucket}.s3.amazonaws.com/${key}`;
   } catch (error) {
-    console.warn('[Storage] Cloud upload failed, falling back to local storage:', error.message);
+    console.error('[Storage] Cloud upload failed:', error.message);
+    // In production, DO NOT fallback to local disk (it's read-only on Vercel)
+    if (IS_PRODUCTION) return null;
     try {
+      const fs = require('fs');
       const uploadDir = path.join(__dirname, '../../uploads');
       const fullPath = path.join(uploadDir, key);
       fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -56,7 +65,7 @@ const uploadFile = async (key, buffer, contentType) => {
       return `/uploads/${key}`;
     } catch (err) {
       console.error('[Storage] Local fallback save failed:', err.message);
-      return `/uploads/${key}`;
+      return null;
     }
   }
 };
@@ -64,24 +73,22 @@ const uploadFile = async (key, buffer, contentType) => {
 const deleteFile = async (key) => {
   if (!key) return;
 
-  // Try to delete locally first if it exists
-  try {
-    const uploadDir = path.join(__dirname, '../../uploads');
-    const localPath = path.join(uploadDir, key);
-    if (fs.existsSync(localPath)) {
-      fs.unlinkSync(localPath);
-      console.log(`[Storage] Deleted local file: ${localPath}`);
+  // Only attempt local delete in development
+  if (!IS_PRODUCTION) {
+    try {
+      const fs = require('fs');
+      const uploadDir = path.join(__dirname, '../../uploads');
+      const localPath = path.join(uploadDir, key);
+      if (fs.existsSync(localPath)) {
+        fs.unlinkSync(localPath);
+        console.log(`[Storage] Deleted local file: ${localPath}`);
+      }
+    } catch (err) {
+      console.warn('[Storage] Local file delete failed:', err.message);
     }
-  } catch (err) {
-    console.warn('[Storage] Local file delete failed:', err.message);
   }
 
-  if (!process.env.AWS_S3_BUCKET && !process.env.R2_BUCKET) return;
-
-  const accessKey = process.env.AWS_ACCESS_KEY_ID;
-  if (!accessKey || accessKey.includes('your_aws_access_key') || accessKey === '') {
-    return;
-  }
+  if (!hasS3Config()) return;
 
   try {
     const command = new DeleteObjectCommand({ Bucket: bucket, Key: key });
@@ -94,30 +101,28 @@ const deleteFile = async (key) => {
 const getSignedDownloadUrl = async (key, expiresIn = 3600) => {
   if (!key) return null;
 
-  // If local file exists, return local path
-  try {
-    const uploadDir = path.join(__dirname, '../../uploads');
-    const localPath = path.join(uploadDir, key);
-    if (fs.existsSync(localPath)) {
-      return `/uploads/${key}`;
-    }
-  } catch (err) {}
-
-  if (!process.env.AWS_S3_BUCKET && !process.env.R2_BUCKET) {
-    return null;
+  // Only check local files in development
+  if (!IS_PRODUCTION) {
+    try {
+      const fs = require('fs');
+      const uploadDir = path.join(__dirname, '../../uploads');
+      const localPath = path.join(uploadDir, key);
+      if (fs.existsSync(localPath)) {
+        return `/uploads/${key}`;
+      }
+    } catch (err) {}
   }
 
-  const accessKey = process.env.AWS_ACCESS_KEY_ID;
-  if (!accessKey || accessKey.includes('your_aws_access_key') || accessKey === '') {
-    return `/uploads/${key}`;
+  if (!hasS3Config()) {
+    return IS_PRODUCTION ? null : `/uploads/${key}`;
   }
 
   try {
     const command = new GetObjectCommand({ Bucket: bucket, Key: key });
     return getSignedUrl(s3Client, command, { expiresIn });
   } catch (error) {
-    console.warn('[Storage] Get signed URL failed, using fallback:', error.message);
-    return `/uploads/${key}`;
+    console.warn('[Storage] Get signed URL failed:', error.message);
+    return null;
   }
 };
 
