@@ -93,6 +93,20 @@ app.use('/api/search', searchRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Root route — shows API is running
+app.get('/', (req, res) => {
+  res.json({
+    status: 'running',
+    message: 'CallCRM API Server is running. All endpoints are under /api/*',
+    version: '1.0.0',
+    health: '/health',
+    docs: 'Contact admin for API documentation',
+  });
+});
+
+// Ignore favicon requests silently
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 // 404 + Error handling
 app.use(notFound);
 app.use(errorHandler);
