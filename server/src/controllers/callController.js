@@ -3,7 +3,7 @@ const { query } = require('../config/database');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/response');
 const { getPagination, getSortParams } = require('../utils/helpers');
 const storageService = require('../services/storageService');
-const { queueTranscription } = require('../jobs/transcriptionJob');
+const { queueTranscription, transcribeCall } = require('../jobs/transcriptionJob');
 
 const ALLOWED_SORT = ['call_date', 'duration_seconds', 'status', 'created_at', 'title'];
 
@@ -148,8 +148,14 @@ const uploadCall = async (req, res, next) => {
       );
     }
 
-    // Queue AI transcription (non-blocking)
-    queueTranscription(call.id, fileKey, pitchThreshold).catch(console.error);
+    // Queue AI transcription
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) {
+      console.log(`[Upload] Serverless environment detected. Awaiting transcription for call ${call.id}...`);
+      await transcribeCall(call.id, fileKey, pitchThreshold).catch(console.error);
+    } else {
+      queueTranscription(call.id, fileKey, pitchThreshold).catch(console.error);
+    }
 
     sendSuccess(res, {
       ...call,
@@ -262,9 +268,16 @@ const reprocessCall = async (req, res, next) => {
     if (!result.rows[0]) return sendError(res, 404, 'Call not found');
 
     await query(`UPDATE calls SET status = 'uploaded' WHERE id = $1`, [req.params.id]);
-    queueTranscription(req.params.id, result.rows[0].file_key, 10).catch(console.error);
 
-    sendSuccess(res, null, 'Reprocessing queued');
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) {
+      console.log(`[Reprocess] Serverless environment detected. Awaiting transcription for call ${req.params.id}...`);
+      await transcribeCall(req.params.id, result.rows[0].file_key, 10).catch(console.error);
+      sendSuccess(res, null, 'Reprocessing completed');
+    } else {
+      queueTranscription(req.params.id, result.rows[0].file_key, 10).catch(console.error);
+      sendSuccess(res, null, 'Reprocessing queued');
+    }
   } catch (err) {
     next(err);
   }
@@ -405,14 +418,22 @@ const AdmZip = require('adm-zip');
     const results = await Promise.all(uploadPromises);
     const createdCalls = results.filter(Boolean);
 
-    // Process transcription queue under the global queue manager
-    (async () => {
-      await Promise.all(createdCalls.map(call => {
-        console.log(`[Batch Job] Enqueuing call ID: ${call.id} into global transcription queue`);
-        return queueTranscription(call.id, call.file_key, pitchThreshold);
-      }));
-      console.log(`[Batch Job] Enqueued all ${createdCalls.length} calls successfully`);
-    })().catch(console.error);
+    // Process transcription queue
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) {
+      console.log(`[Batch Job] Serverless environment detected. Awaiting batch transcriptions...`);
+      for (const call of createdCalls) {
+        await transcribeCall(call.id, call.file_key, pitchThreshold).catch(console.error);
+      }
+    } else {
+      (async () => {
+        await Promise.all(createdCalls.map(call => {
+          console.log(`[Batch Job] Enqueuing call ID: ${call.id} into global transcription queue`);
+          return queueTranscription(call.id, call.file_key, pitchThreshold);
+        }));
+        console.log(`[Batch Job] Enqueued all ${createdCalls.length} calls successfully`);
+      })().catch(console.error);
+    }
 
     sendSuccess(res, {
       count: createdCalls.length,

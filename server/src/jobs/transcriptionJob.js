@@ -18,16 +18,47 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10) => {
     // Mark as processing
     await query(`UPDATE calls SET status = 'processing' WHERE id = $1`, [callId]);
 
-    // Fetch audio from cloud storage (no local disk on Vercel)
+    // Fetch audio from cloud storage (no local disk on Vercel) or local filesystem (development)
     let fileBuffer = null;
     if (fileKey) {
       try {
         const signedUrl = await storageService.getSignedUrl(fileKey);
-        if (signedUrl && signedUrl.startsWith('http')) {
-          // Use native fetch (Node 18+) — no node-fetch needed
-          const response = await fetch(signedUrl);
-          if (!response.ok) throw new Error(`Storage fetch failed: ${response.status}`);
-          fileBuffer = Buffer.from(await response.arrayBuffer());
+        if (signedUrl) {
+          if (signedUrl.startsWith('http')) {
+            // Use native fetch (Node 18+) — no node-fetch needed
+            const response = await fetch(signedUrl);
+            if (!response.ok) throw new Error(`Storage fetch failed: ${response.status}`);
+            fileBuffer = Buffer.from(await response.arrayBuffer());
+          } else {
+            // Local file fallback (development)
+            const fs = require('fs');
+            const path = require('path');
+            
+            let localPath;
+            if (path.isAbsolute(signedUrl)) {
+              localPath = signedUrl;
+            } else {
+              // signedUrl is a relative url like /uploads/recordings/...
+              const cleanKey = signedUrl.startsWith('/uploads/') 
+                ? signedUrl.substring(9) 
+                : fileKey;
+              localPath = path.join(__dirname, '../../uploads', cleanKey);
+            }
+            
+            if (fs.existsSync(localPath)) {
+              logger.info(`[Job] Reading local file: ${localPath}`);
+              fileBuffer = fs.readFileSync(localPath);
+            } else {
+              // try direct key in uploads dir
+              const directPath = path.join(__dirname, '../../uploads', fileKey);
+              if (fs.existsSync(directPath)) {
+                logger.info(`[Job] Reading local file (direct key): ${directPath}`);
+                fileBuffer = fs.readFileSync(directPath);
+              } else {
+                throw new Error(`Local file not found at ${localPath} or ${directPath}`);
+              }
+            }
+          }
         }
       } catch (e) {
         logger.warn(`[Job] Could not fetch file from storage: ${e.message}`);
