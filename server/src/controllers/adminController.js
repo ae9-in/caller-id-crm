@@ -2,12 +2,8 @@ const { query } = require('../config/database');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/response');
 const { getPagination } = require('../utils/helpers');
 const { getOpenAIClient } = require('../config/openai');
-const { PDFParse } = require('pdf-parse');
-const pdfParse = async (buffer) => {
-  const parser = new PDFParse(new Uint8Array(buffer));
-  const result = await parser.getText();
-  return { text: result.text || '' };
-};
+// pdf-parse v1 exports a single async function: pdfParse(buffer) => { text, numpages, ... }
+const pdfParse = require('pdf-parse');
 
 const getAuditLogs = async (req, res, next) => {
   try {
