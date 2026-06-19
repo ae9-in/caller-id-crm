@@ -4,11 +4,12 @@ const {
   getBusinesses, getBusinessById, createBusiness, updateBusiness,
   deleteBusiness, getBusinessTimeline, getBusinessCalls,
   getBusinessNotes, addBusinessNote, getTags, createTag,
-  getBusinessesForAssignment, assignBusinessesToUser,
+  getBusinessesForAssignment, assignBusinessesToUser, uploadBusinessPitchPdf,
 } = require('../controllers/businessController');
 const { authenticate } = require('../middleware/auth');
 const { requireManager, requireAgent, requireAdmin } = require('../middleware/rbac');
 const { auditLogger } = require('../middleware/auditLogger');
+const { uploadPdf, handleMulterError } = require('../middleware/upload');
 
 router.use(authenticate);
 
@@ -30,5 +31,6 @@ router.get('/:id/timeline', getBusinessTimeline);
 router.get('/:id/calls', getBusinessCalls);
 router.get('/:id/notes', getBusinessNotes);
 router.post('/:id/notes', requireAgent, auditLogger('create', 'business_note'), addBusinessNote);
+router.post('/:id/pitch-pdf', requireManager, uploadPdf.single('file'), handleMulterError, auditLogger('update', 'business'), uploadBusinessPitchPdf);
 
 module.exports = router;

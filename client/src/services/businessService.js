@@ -14,4 +14,5 @@ export const businessService = {
   createTag: (data) => api.post('/businesses/tags', data),
   getAllForAssignment: () => api.get('/businesses/all-assignment'),
   assignMultiple: (userId, businessIds) => api.put(`/businesses/assign-multiple/${userId}`, { businessIds }),
+  uploadBusinessPitchPdf: (id, formData) => api.post(`/businesses/${id}/pitch-pdf`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 }

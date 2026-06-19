@@ -553,7 +553,9 @@ const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioL
       },
       body: JSON.stringify({
         audio_url: audioUrl,
-        speaker_labels: true
+        speaker_labels: true,
+        model: 'enhanced',
+        ...(audioLanguage && audioLanguage !== 'auto' ? { language_code: audioLanguage } : {})
       })
     });
 
@@ -692,22 +694,107 @@ const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transc
  * Generate AI summary from transcript using GPT
  * Returns a mock summary if OpenAI not configured or fails
  */
-const generateSummary = async (transcript, duration) => {
+const generateSummary = async (transcript, duration, businessId = null) => {
+  // 1. Fetch pitch template from db
+  let pitchText = '';
+  let pitchKeywords = [];
+  let fetchedFromBusiness = false;
+
+  if (businessId) {
+    try {
+      const bizRes = await query(`
+        SELECT pitch_pdf_text, pitch_pdf_keywords 
+        FROM businesses 
+        WHERE id = $1
+      `, [businessId]);
+      
+      if (bizRes.rows.length > 0 && bizRes.rows[0].pitch_pdf_text) {
+        pitchText = bizRes.rows[0].pitch_pdf_text;
+        const kwVal = bizRes.rows[0].pitch_pdf_keywords;
+        try {
+          pitchKeywords = typeof kwVal === 'string' 
+            ? JSON.parse(kwVal) 
+            : (Array.isArray(kwVal) ? kwVal : []);
+        } catch (e) {
+          pitchKeywords = [];
+        }
+        fetchedFromBusiness = true;
+      }
+    } catch (e) {
+      logger.warn(`[AI] Could not fetch business-specific pitch settings for business ${businessId}: ${e.message}`);
+    }
+  }
+
+  if (!fetchedFromBusiness) {
+    try {
+      const pitchRes = await query(`
+        SELECT key, value FROM ai_settings 
+        WHERE key IN ('pitch_pdf_text', 'pitch_pdf_keywords')
+      `);
+      pitchRes.rows.forEach(row => {
+        if (row.key === 'pitch_pdf_text') pitchText = row.value;
+        if (row.key === 'pitch_pdf_keywords') {
+          try {
+            pitchKeywords = JSON.parse(row.value);
+          } catch (e) {
+            pitchKeywords = [];
+          }
+        }
+      });
+    } catch (e) {
+      logger.warn(`[AI] Could not fetch pitch settings: ${e.message}`);
+    }
+  }
+
+  // Define fallback is_pitched evaluation
+  let fallbackIsPitched = false;
+  if (pitchKeywords && pitchKeywords.length > 0) {
+    const lowerTranscript = (transcript || '').toLowerCase();
+    const matched = pitchKeywords.filter(k => lowerTranscript.includes(k.toLowerCase()));
+    // If at least 3 keywords or 20% of keywords match, we fall back to true
+    const minMatches = Math.max(2, Math.min(4, Math.floor(pitchKeywords.length * 0.2)));
+    fallbackIsPitched = matched.length >= minMatches;
+  } else {
+    fallbackIsPitched = duration > 10;
+  }
+
   const client = getOpenAIClient();
 
   if (!client) {
-    return getMockSummary(transcript, duration);
+    const mockRes = getMockSummary(transcript, duration);
+    return { ...mockRes, is_pitched: mockRes.is_pitched ?? fallbackIsPitched };
   }
 
   try {
+    let pitchSection = '';
+    let pitchRequirement = '';
+
+    if (pitchText && pitchText.trim()) {
+      pitchSection = `
+TARGET OUTREACH PITCH SCRIPT REFERENCE:
+---
+${pitchText}
+---
+
+TARGET OUTREACH PITCH KEYWORDS:
+${pitchKeywords.join(', ')}
+`;
+      pitchRequirement = `
+3. Compare the conversation with the "TARGET OUTREACH PITCH SCRIPT REFERENCE" and "TARGET OUTREACH PITCH KEYWORDS". Determine if the agent successfully pitched the service/product or presented the core pitch concepts. Set "is_pitched" to true if the pitch was made, otherwise set it to false. Use semantic understanding rather than strict word matching.`;
+    } else {
+      pitchRequirement = `
+3. Classify if this is a pitched call (set "is_pitched" to true or false). General rule: if the agent explains the service/product and attempts to sell or request an appointment, set it to true.`;
+    }
+
     const prompt = `You are an expert call analyst for a sales/placement outreach CRM. Analyze the following call transcript (duration: ${Math.round(duration / 60)} minutes) and provide a structured analysis.
+${pitchSection}
 
 TRANSCRIPT:
 ${transcript}
 
 CRITICAL REQUIREMENTS:
 1. If the customer/speaker says "send me a mail", "send me mail", "send me an email", "email me", "mail me", "send a mail", or "send an email", you MUST classify the "detected_outcome" as "follow_up_needed".
-2. If the customer/speaker says "interested" or "interest", or expresses clear interest/agreement (e.g. "sounds good", "send me the proposal"), you MUST classify the "detected_outcome" as "interested".
+2. If the customer/speaker says "interested" or "interest", or expresses clear interest/agreement (e.g. "sounds good", "send me the proposal"), you MUST classify the "detected_outcome" as "interested".${pitchRequirement}
 
 Respond with ONLY valid JSON in this exact format:
 {
@@ -717,7 +804,8 @@ Respond with ONLY valid JSON in this exact format:
   "follow_up_suggestions": ["suggestion 1", "suggestion 2"],
   "detected_outcome": "one of: interested|not_interested|follow_up_needed|call_back_later|meeting_scheduled|wrong_number|no_answer|unknown",
   "sentiment": "one of: positive|neutral|negative",
-  "objections": ["objection 1 if any"]
+  "objections": ["objection 1 if any"],
+  "is_pitched": true
 }`;
 
     logger.info('[AI] Sending request to OpenAI Chat Completions API...');
@@ -728,10 +816,15 @@ Respond with ONLY valid JSON in this exact format:
       temperature: 0.3,
     }, { timeout: 90000, maxRetries: 3 });
 
-    return JSON.parse(response.choices[0].message.content);
+    const result = JSON.parse(response.choices[0].message.content);
+    if (result.is_pitched === undefined) {
+      result.is_pitched = fallbackIsPitched;
+    }
+    return result;
   } catch (err) {
     logger.error(`[AI] OpenAI GPT API call failed: ${err.message}. Falling back to mock summary.`);
-    return getMockSummary(transcript, duration);
+    const mockRes = getMockSummary(transcript, duration);
+    return { ...mockRes, is_pitched: mockRes.is_pitched ?? fallbackIsPitched };
   }
 };
 

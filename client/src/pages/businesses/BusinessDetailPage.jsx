@@ -190,6 +190,74 @@ const BusinessDetailPage = () => {
               </div>
             )}
           </Card>
+
+          {/* Sales Pitch Script Card */}
+          <Card className="p-4 space-y-3">
+            <h3 className="font-semibold text-slate-700 text-sm flex items-center gap-1.5">
+              <FileText size={16} className="text-slate-400" />
+              Sales Pitch Script
+            </h3>
+            
+            {business.pitch_pdf_filename ? (
+              <div className="space-y-2">
+                <div className="p-2 bg-slate-50 border border-slate-100 rounded flex items-center justify-between text-xs">
+                  <span className="font-medium text-slate-700 truncate max-w-[180px]" title={business.pitch_pdf_filename}>
+                    📄 {business.pitch_pdf_filename}
+                  </span>
+                  <span className="text-slate-400 font-mono text-[10px]">active</span>
+                </div>
+                {business.pitch_pdf_keywords && business.pitch_pdf_keywords.length > 0 && (
+                  <div>
+                    <p className="text-slate-400 text-[10px] uppercase font-bold mb-1">Keywords</p>
+                    <div className="flex flex-wrap gap-1">
+                      {business.pitch_pdf_keywords.map((kw, i) => (
+                        <span key={i} className="px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 text-[10px] font-medium font-mono">
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 italic bg-amber-50/50 border border-amber-100 p-2 rounded">
+                No business-specific script uploaded. Falling back to the global pitch script.
+              </p>
+            )}
+
+            {(isAdmin || user?.role === 'manager') && (
+              <div className="pt-1">
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                  {business.pitch_pdf_filename ? 'Replace Pitch PDF' : 'Upload Pitch PDF'}
+                </label>
+                <input
+                  type="file"
+                  id="pitch-pdf-upload-input"
+                  accept="application/pdf"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const formData = new FormData()
+                    formData.append('file', file)
+                    const uploadToast = toast.loading('Uploading and analyzing pitch script...')
+                    try {
+                      await businessService.uploadBusinessPitchPdf(business.id, formData)
+                      toast.success('Pitch script uploaded & analyzed successfully', { id: uploadToast })
+                      refetch()
+                    } catch (err) {
+                      toast.error(err.response?.data?.message || 'Failed to upload pitch script', { id: uploadToast })
+                    }
+                  }}
+                  className="block w-full text-xs text-slate-500
+                    file:mr-2 file:py-1 file:px-2
+                    file:rounded-full file:border-0
+                    file:text-xs file:font-semibold
+                    file:bg-brand-50 file:text-brand-700
+                    hover:file:bg-brand-100 cursor-pointer"
+                />
+              </div>
+            )}
+          </Card>
         </div>
 
         {/* Right column: tabs */}

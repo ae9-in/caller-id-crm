@@ -16,6 +16,7 @@ const BusinessFormModal = ({ open, onClose, business, onSaved }) => {
   const [tags, setTags] = useState([])
   const [allTags, setAllTags] = useState([])
   const [users, setUsers] = useState([])
+  const [pitchFile, setPitchFile] = useState(null)
 
   useEffect(() => {
     if (business) {
@@ -24,12 +25,14 @@ const BusinessFormModal = ({ open, onClose, business, onSaved }) => {
         assigned_user_id: business.assigned_user_id || '',
       })
       setTags((business.tags || []).map((t) => t.id))
+      setPitchFile(null)
     } else {
       setForm({
         name: '',
         assigned_user_id: currentUser?.id || '',
       })
       setTags([])
+      setPitchFile(null)
     }
   }, [business, open, currentUser])
 
@@ -51,7 +54,18 @@ const BusinessFormModal = ({ open, onClose, business, onSaved }) => {
         await businessService.update(business.id, { ...form, tags })
         toast.success('Business updated')
       } else {
-        await businessService.create({ ...form, tags })
+        const res = await businessService.create({ ...form, tags })
+        const newBiz = res.data.data
+        if (pitchFile && newBiz && newBiz.id) {
+          const formData = new FormData()
+          formData.append('file', pitchFile)
+          try {
+            await businessService.uploadBusinessPitchPdf(newBiz.id, formData)
+          } catch (uploadErr) {
+            console.error(uploadErr)
+            toast.error('Business created, but pitch script PDF upload/analysis failed')
+          }
+        }
         toast.success('Business created')
       }
       onSaved()
@@ -102,6 +116,25 @@ const BusinessFormModal = ({ open, onClose, business, onSaved }) => {
           onChange={set('assigned_user_id')}
           required
         />
+
+        {!isEdit && (
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-slate-700">
+              Pitch script PDF (Optional)
+            </label>
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setPitchFile(e.target.files?.[0] || null)}
+              className="block w-full text-xs text-slate-500 border border-slate-200 rounded p-2
+                file:mr-2 file:py-1 file:px-2
+                file:rounded-full file:border-0
+                file:text-xs file:font-semibold
+                file:bg-brand-50 file:text-brand-700
+                hover:file:bg-brand-100 cursor-pointer"
+            />
+          </div>
+        )}
 
         {allTags.length > 0 && (
           <div>

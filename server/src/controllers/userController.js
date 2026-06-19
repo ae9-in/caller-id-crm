@@ -14,7 +14,7 @@ const getUsers = async (req, res, next) => {
 
     const [dataResult, countResult] = await Promise.all([
       query(
-        `SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.is_active, u.last_login, u.created_at, r.name as role
+        `SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.is_active, u.last_login, u.created_at, u.target_quota, r.name as role
          FROM users u JOIN roles r ON u.role_id = r.id
          WHERE 1=1 ${searchCondition}
          ORDER BY u.created_at DESC LIMIT $1 OFFSET $2`,
@@ -36,7 +36,7 @@ const getUserById = async (req, res, next) => {
   try {
     const result = await query(
       `SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.avatar_url,
-              u.is_active, u.last_login, u.created_at, r.name as role
+               u.is_active, u.last_login, u.created_at, u.target_quota, r.name as role
        FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
       [req.params.id]
     );
@@ -49,7 +49,7 @@ const getUserById = async (req, res, next) => {
 
 const createUser = async (req, res, next) => {
   try {
-    const { email, password, first_name, last_name, phone, role } = req.body;
+    const { email, password, first_name, last_name, phone, role, target_quota } = req.body;
     if (!email || !password || !first_name || !last_name || !role) {
       return sendError(res, 400, 'Email, password, first name, last name, and role are required');
     }
@@ -66,10 +66,10 @@ const createUser = async (req, res, next) => {
 
     const hash = await bcrypt.hash(password, 10);
     const result = await query(
-      `INSERT INTO users (email, password_hash, first_name, last_name, phone, role_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, email, first_name, last_name, phone, is_active, created_at`,
-      [email.toLowerCase(), hash, first_name, last_name, phone || null, roleResult.rows[0].id]
+      `INSERT INTO users (email, password_hash, first_name, last_name, phone, role_id, target_quota)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, email, first_name, last_name, phone, is_active, created_at, target_quota`,
+      [email.toLowerCase(), hash, first_name, last_name, phone || null, roleResult.rows[0].id, target_quota || 0]
     );
 
     sendSuccess(res, { ...result.rows[0], role }, 'User created', 201);
@@ -80,7 +80,7 @@ const createUser = async (req, res, next) => {
 
 const updateUser = async (req, res, next) => {
   try {
-    const { first_name, last_name, phone, is_active, role } = req.body;
+    const { first_name, last_name, phone, is_active, role, target_quota } = req.body;
 
     if (req.user.role !== 'admin') {
       const userResult = await query(
@@ -104,6 +104,11 @@ const updateUser = async (req, res, next) => {
     if (last_name !== undefined) { updates.push(`last_name = $${i++}`); params.push(last_name); }
     if (phone !== undefined) { updates.push(`phone = $${i++}`); params.push(phone); }
     if (is_active !== undefined) { updates.push(`is_active = $${i++}`); params.push(is_active); }
+    if (target_quota !== undefined) {
+      if (req.user.role !== 'admin') return sendError(res, 403, 'Only admins can set target quota');
+      updates.push(`target_quota = $${i++}`);
+      params.push(target_quota);
+    }
 
     if (role) {
       const roleResult = await query(`SELECT id FROM roles WHERE name = $1`, [role]);

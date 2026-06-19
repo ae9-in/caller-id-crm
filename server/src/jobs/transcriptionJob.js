@@ -2,6 +2,10 @@ const { query } = require('../config/database');
 const { transcribeAudio, generateSummary, analyzeSpeakers } = require('../services/aiService');
 const storageService = require('../services/storageService');
 const logger = require('../utils/logger');
+const pLimit = require('p-limit').default;
+
+const concurrency = process.env.TRANSCRIBE_CONCURRENCY ? parseInt(process.env.TRANSCRIBE_CONCURRENCY) : 4;
+const queueLimit = pLimit(concurrency);
 
 /**
  * Background job: Transcribe a call and generate AI analysis
@@ -39,7 +43,7 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10) => {
     }
 
     // Get call details (duration, file size, languages)
-    const callResult = await query(`SELECT duration_seconds, file_size, audio_language, transcription_lang FROM calls WHERE id = $1`, [callId]);
+    const callResult = await query(`SELECT duration_seconds, file_size, audio_language, transcription_lang, business_id FROM calls WHERE id = $1`, [callId]);
     if (callResult.rows.length === 0) {
       logger.error(`[Job] Call ${callId} not found in database.`);
       await query(`UPDATE calls SET status = 'failed' WHERE id = $1`, [callId]);
@@ -116,7 +120,7 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10) => {
 
     // Generate AI summary (only if text is meaningful)
     if (transcriptData.text && transcriptData.text.length > 50) {
-      const summaryData = await generateSummary(transcriptData.text, duration);
+      const summaryData = await generateSummary(transcriptData.text, duration, callResult.rows[0]?.business_id);
 
       await query(
         `INSERT INTO call_summaries (call_id, summary, key_points, action_items, follow_up_suggestions, detected_outcome, sentiment, objections)
@@ -125,6 +129,7 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10) => {
            summary = EXCLUDED.summary,
            key_points = EXCLUDED.key_points,
            action_items = EXCLUDED.action_items,
+           follow_up_suggestions = EXCLUDED.follow_up_suggestions,
            detected_outcome = EXCLUDED.detected_outcome,
            sentiment = EXCLUDED.sentiment,
            updated_at = NOW()`,
@@ -140,10 +145,25 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10) => {
         ]
       );
 
-      // Update call outcome from AI
+      // Create follow-up entries for suggestions containing "to be followed"
+      if (Array.isArray(summaryData.follow_up_suggestions)) {
+        const businessId = callResult.rows[0].business_id;
+        for (const suggestion of summaryData.follow_up_suggestions) {
+          if (typeof suggestion === 'string' && suggestion.toLowerCase().includes('to be followed')) {
+            // Insert a followup with a default due date of tomorrow
+            await query(
+              `INSERT INTO followups (business_id, call_id, title, due_date, status, created_by)
+               VALUES ($1, $2, $3, NOW() + INTERVAL '1 day', 'pending', $4) RETURNING id`,
+              [businessId, callId, suggestion, null]
+            );
+          }
+        }
+      }
+
+      // Update call outcome and pitch status from AI
       await query(
-        `UPDATE calls SET call_outcome = $1, status = 'transcribed' WHERE id = $2`,
-        [summaryData.detected_outcome || 'unknown', callId]
+        `UPDATE calls SET call_outcome = $1, is_pitched = $2, status = 'transcribed' WHERE id = $3`,
+        [summaryData.detected_outcome || 'unknown', summaryData.is_pitched !== undefined ? summaryData.is_pitched : isPitched, callId]
       );
     } else {
       await query(`UPDATE calls SET status = 'transcribed' WHERE id = $1`, [callId]);
@@ -181,4 +201,11 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10) => {
   }
 };
 
-module.exports = { transcribeCall };
+const queueTranscription = (callId, fileKey, pitchThreshold) => {
+  return queueLimit(async () => {
+    logger.info(`[Queue] Running transcription for call ${callId}. Queue stats: active=${queueLimit.activeCount}, pending=${queueLimit.pendingCount}`);
+    await transcribeCall(callId, fileKey, pitchThreshold);
+  });
+};
+
+module.exports = { transcribeCall, queueTranscription };

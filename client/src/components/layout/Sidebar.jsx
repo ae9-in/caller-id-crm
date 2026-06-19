@@ -43,7 +43,7 @@ const Sidebar = ({ open }) => {
   }, [open])
 
   const clientNav = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user?.role))
-  const adminNav = isAdmin() ? ADMIN_NAV : (user?.role === 'manager' ? [{ path: '/admin/users', label: 'User Management', icon: 'Users' }] : [])
+  const adminNav = isAdmin() ? ADMIN_NAV : (user?.role === 'manager' ? [{ path: '/admin/users', label: 'User Management', icon: 'Users' }, { path: '/admin/ai-settings', label: 'AI Settings', icon: 'Cpu' }] : [])
 
   return (
     <aside

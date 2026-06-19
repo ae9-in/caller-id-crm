@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Phone, Upload, Filter, Clock, CheckCircle2 } from 'lucide-react'
 import { callService } from '../../services/callService'
@@ -29,6 +29,10 @@ const CallListPage = () => {
     callService.getAll, {}
   )
 
+  useEffect(() => {
+    updateParams({ search: debouncedSearch })
+  }, [debouncedSearch])
+
   const [s, ss] = useS('')
 
   const cols = ['call_date', 'duration_seconds', 'status']
@@ -49,10 +53,7 @@ const CallListPage = () => {
       <div className="flex flex-wrap items-center gap-3">
         <SearchInput
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            updateParams({ search: e.target.value })
-          }}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by title, business..."
           className="flex-1 min-w-48 max-w-xs"
         />

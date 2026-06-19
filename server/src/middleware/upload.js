@@ -33,6 +33,20 @@ const uploadZip = multer({
   limits: { fileSize: MAX_FILE_SIZE_BYTES },
 });
 
+const pdfFileFilter = (req, file, cb) => {
+  if (file.mimetype === 'application/pdf' || file.originalname.endsWith('.pdf')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only PDF files (.pdf) are allowed.'), false);
+  }
+};
+
+const uploadPdf = multer({
+  storage,
+  fileFilter: pdfFileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // Max 10MB for PDFs
+});
+
 const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
@@ -46,4 +60,4 @@ const handleMulterError = (err, req, res, next) => {
   next();
 };
 
-module.exports = { upload, uploadZip, handleMulterError };
+module.exports = { upload, uploadZip, uploadPdf, handleMulterError };

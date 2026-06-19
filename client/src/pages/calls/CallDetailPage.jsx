@@ -212,7 +212,7 @@ const CallDetailPage = () => {
         <div className="lg:col-span-2">
           <Card>
             <div className="flex border-b border-slate-100 px-2 overflow-x-auto">
-              {['transcript', 'summary', 'notes'].map((tab) => (
+              {['summary', 'notes', ...(isManager() ? ['transcript'] : [])].map((tab) => (
                 <TabButton key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}>
                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
                 </TabButton>
@@ -223,12 +223,26 @@ const CallDetailPage = () => {
               {/* Transcript */}
               {activeTab === 'transcript' && (
                 <div>
-                  {tLoading ? <LoadingState /> : !transcript ? (
-                    <EmptyState icon={<Mic size={36} />} title="Transcript not ready" description="Processing may still be in progress" />
+                  {tLoading ? (
+                    <LoadingState />
+                  ) : !isManager() ? (
+                    <EmptyState
+                      icon={<Mic size={36} />}
+                      title="Access Denied"
+                      description="You don't have permission to view the transcript."
+                    />
+                  ) : !transcript ? (
+                    <EmptyState
+                      icon={<Mic size={36} />}
+                      title="Transcript not ready"
+                      description="Processing may still be in progress"
+                    />
                   ) : (
                     <div>
                       <div className="flex items-center justify-between mb-4">
-                        <div className="text-xs text-slate-400">{transcript.word_count} words · {transcript.language?.toUpperCase()}</div>
+                        <div className="text-xs text-slate-400">
+                          {transcript.word_count} words · {transcript.language?.toUpperCase()}
+                        </div>
                         <Button variant="ghost" size="sm" onClick={handleCopyTranscript}>
                           {copied ? <CheckCheck size={14} className="text-emerald-500" /> : <Copy size={14} />}
                           {copied ? 'Copied!' : 'Copy'}
@@ -243,7 +257,9 @@ const CallDetailPage = () => {
                         </div>
                       ) : (
                         <div className="bg-slate-50 rounded-lg p-4 max-h-96 overflow-y-auto scrollbar-thin">
-                          <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{transcript.full_text}</p>
+                          <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                            {transcript.full_text}
+                          </p>
                         </div>
                       )}
                     </div>

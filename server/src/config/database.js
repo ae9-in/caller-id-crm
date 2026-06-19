@@ -20,11 +20,14 @@ if (
   };
 }
 
+const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
 const pool = new Pool({
   ...poolConfig,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000, // 5s timeout for Neon spinup
+  options: `-c timezone=${tz}`,
 });
 
 pool.on('error', (err) => {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Users, Edit, Trash2, Shield, Building2 } from 'lucide-react'
 import { userService } from '../../services/index'
 import { businessService } from '../../services/businessService'
@@ -66,6 +66,10 @@ const UsersPage = () => {
     userService.getAll, {}
   )
 
+  useEffect(() => {
+    updateParams({ search: debouncedSearch })
+  }, [debouncedSearch])
+
   const openCreate = () => { setEditUser(null); setForm({ email: '', password: '', first_name: '', last_name: '', phone: '', role: 'agent' }); setShowForm(true) }
   const openEdit = (user) => { setEditUser(user); setForm({ first_name: user.first_name, last_name: user.last_name, phone: user.phone || '', role: user.role, is_active: user.is_active }); setShowForm(true) }
 
@@ -105,7 +109,7 @@ const UsersPage = () => {
       />
 
       <div className="flex gap-3">
-        <SearchInput value={search} onChange={(e) => { setSearch(e.target.value); updateParams({ search: e.target.value }) }} placeholder="Search users..." className="max-w-xs" />
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users..." className="max-w-xs" />
       </div>
 
       {loading ? <LoadingState /> : (

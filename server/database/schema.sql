@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone VARCHAR(20),
   avatar_url TEXT,
   role_id UUID NOT NULL REFERENCES roles(id),
+  target_quota INTEGER DEFAULT 0,
   is_active BOOLEAN DEFAULT TRUE,
   last_login TIMESTAMPTZ,
   reset_token VARCHAR(255),
@@ -312,6 +313,12 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_calls_title_trgm ON calls USING gin(title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_followups_title_trgm ON followups USING gin(title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_calls_is_pitched ON calls(is_pitched);
+CREATE INDEX IF NOT EXISTS idx_calls_call_outcome ON calls(call_outcome);
+CREATE INDEX IF NOT EXISTS idx_calls_user_id_call_date ON calls(user_id, call_date DESC);
+CREATE INDEX IF NOT EXISTS idx_calls_business_id_call_date ON calls(business_id, call_date DESC);
 
 -- ============================================================
 -- AUTO-UPDATE updated_at TRIGGER

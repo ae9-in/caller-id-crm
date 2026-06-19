@@ -1,6 +1,13 @@
 const { query } = require('../config/database');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/response');
 const { getPagination, getSortParams } = require('../utils/helpers');
+const { getOpenAIClient } = require('../config/openai');
+const { PDFParse } = require('pdf-parse');
+const pdfParse = async (buffer) => {
+  const parser = new PDFParse(new Uint8Array(buffer));
+  const result = await parser.getText();
+  return { text: result.text || '' };
+};
 
 const ALLOWED_SORT = ['name', 'status', 'priority', 'created_at', 'updated_at'];
 
@@ -299,9 +306,100 @@ const assignBusinessesToUser = async (req, res, next) => {
   }
 };
 
+const uploadBusinessPitchPdf = async (req, res, next) => {
+  try {
+    const businessId = req.params.id;
+    if (!req.file) {
+      return sendError(res, 400, 'No PDF file uploaded');
+    }
+
+    // Check if business exists
+    const bizCheck = await query('SELECT id, name FROM businesses WHERE id = $1', [businessId]);
+    if (bizCheck.rows.length === 0) {
+      return sendError(res, 404, 'Business not found');
+    }
+
+    const pdfBuffer = req.file.buffer;
+    const filename = req.file.originalname;
+
+    // 1. Parse text from PDF
+    const parsedPdf = await pdfParse(pdfBuffer);
+    const rawText = parsedPdf.text || '';
+
+    if (!rawText.trim()) {
+      return sendError(res, 400, 'The uploaded PDF appears to be empty or unreadable');
+    }
+
+    // 2. Call OpenAI to extract keywords
+    let keywords = [];
+    try {
+      const client = getOpenAIClient();
+      if (client) {
+        const prompt = `You are an expert sales and AI coaching analyst.
+Analyze the following raw text extracted from an official sales pitch script PDF for the business "${bizCheck.rows[0].name}":
+
+---
+${rawText}
+---
+
+Your task is to:
+1. Extract 15 to 20 key words or short phrases that are essential to this pitch (e.g. product name, core benefit, technical features, call-to-actions, pricing, or target client mentions).
+2. The keywords should be normalized to lowercase.
+3. Keep the keywords simple so they can be easily searched for in call transcripts.
+
+Respond with ONLY valid JSON in this exact format:
+{
+  "keywords": ["keyword1", "keyword2", "keyword3", ...]
+}`;
+
+        const response = await client.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          temperature: 0.3,
+        });
+
+        const parsedContent = JSON.parse(response.choices[0].message.content);
+        keywords = parsedContent.keywords || [];
+      }
+    } catch (openaiErr) {
+      console.error('[BusinessController] OpenAI keyword extraction failed:', openaiErr);
+      // Fallback keyword extraction using simple JS regex
+      const words = rawText.toLowerCase().match(/\b[a-z]{4,15}\b/g) || [];
+      const freq = {};
+      words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+      keywords = Object.keys(freq)
+        .sort((a, b) => freq[b] - freq[a])
+        .slice(0, 15);
+    }
+
+    // 3. Update business row
+    await query(
+      `UPDATE businesses 
+       SET pitch_pdf_filename = $1, 
+           pitch_pdf_text = $2, 
+           pitch_pdf_keywords = $3, 
+           updated_at = NOW() 
+       WHERE id = $4`,
+      [filename, rawText, JSON.stringify(keywords), businessId]
+    );
+
+    // 4. Log activity
+    await query(
+      `INSERT INTO activities (business_id, user_id, type, title, description)
+       VALUES ($1, $2, 'business_updated', $3, $4)`,
+      [businessId, req.user.id, 'Pitch script uploaded', `Pitch PDF "${filename}" uploaded and parsed by ${req.user.first_name}`]
+    );
+
+    sendSuccess(res, { filename, keywords }, 'Pitch PDF parsed and attached to business successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getBusinesses, getBusinessById, createBusiness, updateBusiness,
   deleteBusiness, getBusinessTimeline, getBusinessCalls,
   getBusinessNotes, addBusinessNote, getTags, createTag,
-  getBusinessesForAssignment, assignBusinessesToUser,
+  getBusinessesForAssignment, assignBusinessesToUser, uploadBusinessPitchPdf,
 };

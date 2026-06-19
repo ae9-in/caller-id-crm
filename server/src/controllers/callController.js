@@ -3,7 +3,7 @@ const { query } = require('../config/database');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/response');
 const { getPagination, getSortParams } = require('../utils/helpers');
 const storageService = require('../services/storageService');
-const { transcribeCall } = require('../jobs/transcriptionJob');
+const { queueTranscription } = require('../jobs/transcriptionJob');
 
 const ALLOWED_SORT = ['call_date', 'duration_seconds', 'status', 'created_at', 'title'];
 
@@ -149,7 +149,7 @@ const uploadCall = async (req, res, next) => {
     }
 
     // Queue AI transcription (non-blocking)
-    transcribeCall(call.id, fileKey, pitchThreshold).catch(console.error);
+    queueTranscription(call.id, fileKey, pitchThreshold).catch(console.error);
 
     sendSuccess(res, {
       ...call,
@@ -262,7 +262,7 @@ const reprocessCall = async (req, res, next) => {
     if (!result.rows[0]) return sendError(res, 404, 'Call not found');
 
     await query(`UPDATE calls SET status = 'uploaded' WHERE id = $1`, [req.params.id]);
-    transcribeCall(req.params.id, result.rows[0].file_key, 10).catch(console.error);
+    queueTranscription(req.params.id, result.rows[0].file_key, 10).catch(console.error);
 
     sendSuccess(res, null, 'Reprocessing queued');
   } catch (err) {
@@ -288,7 +288,8 @@ const uploadCallZip = async (req, res, next) => {
 
     const { business_id, audio_language, transcription_lang } = req.body;
     const path = require('path');
-    const AdmZip = require('adm-zip');
+const pLimit = require('p-limit').default;
+const AdmZip = require('adm-zip');
     
     let zip;
     try {
@@ -318,91 +319,97 @@ const uploadCallZip = async (req, res, next) => {
     const settingResult = await query(`SELECT value FROM ai_settings WHERE key = 'pitch_threshold_seconds'`);
     const pitchThreshold = parseInt(settingResult.rows[0]?.value || '10');
 
-    const createdCalls = [];
     const mm = require('music-metadata');
+    const uploadLimit = pLimit(8); // Cap S3/db upload concurrency to 8
 
-    for (const entry of audioEntries) {
-      const buffer = entry.getData();
-      const filename = path.basename(entry.entryName);
-      
-      // Determine mimetype from extension
-      const ext = path.extname(entry.entryName).toLowerCase();
-      let mimetype = 'audio/mpeg';
-      if (ext === '.wav') mimetype = 'audio/wav';
-      else if (ext === '.m4a') mimetype = 'audio/x-m4a';
-      else if (ext === '.ogg') mimetype = 'audio/ogg';
-
-      // Compute MD5 hash for duplicate detection
-      const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
-
-      // Check for duplicate
-      const dupCheck = await query(`SELECT c.id FROM calls c WHERE c.file_hash = $1`, [fileHash]);
-      let isDuplicate = false;
-      let duplicateOfId = null;
-      if (dupCheck.rows.length > 0) {
-        isDuplicate = true;
-        duplicateOfId = dupCheck.rows[0].id;
-      }
-
-      // Parse duration locally using music-metadata
-      let durationSeconds = 0;
+    const uploadPromises = audioEntries.map(entry => uploadLimit(async () => {
       try {
-        const metadata = await mm.parseBuffer(buffer, { mimeType: mimetype });
-        durationSeconds = Math.round(metadata.format.duration || 0);
-      } catch (err) {
-        console.warn(`[Zip Upload] Could not parse duration for ${filename}: ${err.message}`);
-      }
+        const buffer = entry.getData();
+        const filename = path.basename(entry.entryName);
+        
+        // Determine mimetype from extension
+        const ext = path.extname(entry.entryName).toLowerCase();
+        let mimetype = 'audio/mpeg';
+        if (ext === '.wav') mimetype = 'audio/wav';
+        else if (ext === '.m4a') mimetype = 'audio/x-m4a';
+        else if (ext === '.ogg') mimetype = 'audio/ogg';
 
-      // Upload to storage
-      const fileKey = storageService.buildKey(req.user.id, business_id, filename);
-      const fileUrl = await storageService.uploadFile(fileKey, buffer, mimetype);
+        // Compute MD5 hash for duplicate detection
+        const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
 
-      // Insert call record
-      const result = await query(
-        `INSERT INTO calls (title, business_id, user_id, file_name, file_url, file_key, file_size, file_hash, mime_type, status, is_duplicate, duplicate_of, call_date, duration_seconds, audio_language, transcription_lang)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'uploaded', $10, $11, NOW(), $12, $13, $14)
-         RETURNING *`,
-        [
-          filename.replace(/\.[^.]+$/, ''),
-          business_id || null,
-          req.user.id,
-          filename,
-          fileUrl,
-          fileKey,
-          buffer.length,
-          fileHash,
-          mimetype,
-          isDuplicate,
-          duplicateOfId,
-          durationSeconds,
-          audio_language || 'en',
-          transcription_lang || 'en',
-        ]
-      );
-
-      const call = result.rows[0];
-      createdCalls.push(call);
-
-      // Log activity
-      if (business_id) {
-        await query(
-          `INSERT INTO activities (business_id, call_id, user_id, type, title)
-           VALUES ($1, $2, $3, 'call_uploaded', 'Call recording uploaded')`,
-          [business_id, call.id, req.user.id]
-        );
-      }
-    }
-
-    // Process transcription queue SEQUENTIALLY
-    (async () => {
-      for (const call of createdCalls) {
-        try {
-          console.log(`[Batch Job] Starting sequential transcription for call ID: ${call.id}`);
-          await transcribeCall(call.id, call.file_key, pitchThreshold);
-        } catch (err) {
-          console.error(`[Batch Job] Transcription failed for call ID: ${call.id}:`, err);
+        // Check for duplicate
+        const dupCheck = await query(`SELECT c.id FROM calls c WHERE c.file_hash = $1`, [fileHash]);
+        let isDuplicate = false;
+        let duplicateOfId = null;
+        if (dupCheck.rows.length > 0) {
+          isDuplicate = true;
+          duplicateOfId = dupCheck.rows[0].id;
         }
+
+        // Parse duration locally using music-metadata
+        let durationSeconds = 0;
+        try {
+          const metadata = await mm.parseBuffer(buffer, { mimeType: mimetype });
+          durationSeconds = Math.round(metadata.format.duration || 0);
+        } catch (err) {
+          console.warn(`[Zip Upload] Could not parse duration for ${filename}: ${err.message}`);
+        }
+
+        // Upload to storage
+        const fileKey = storageService.buildKey(req.user.id, business_id, filename);
+        const fileUrl = await storageService.uploadFile(fileKey, buffer, mimetype);
+
+        // Insert call record
+        const result = await query(
+          `INSERT INTO calls (title, business_id, user_id, file_name, file_url, file_key, file_size, file_hash, mime_type, status, is_duplicate, duplicate_of, call_date, duration_seconds, audio_language, transcription_lang)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'uploaded', $10, $11, NOW(), $12, $13, $14)
+           RETURNING *`,
+          [
+            filename.replace(/\.[^.]+$/, ''),
+            business_id || null,
+            req.user.id,
+            filename,
+            fileUrl,
+            fileKey,
+            buffer.length,
+            fileHash,
+            mimetype,
+            isDuplicate,
+            duplicateOfId,
+            durationSeconds,
+            audio_language || 'en',
+            transcription_lang || 'en',
+          ]
+        );
+
+        const call = result.rows[0];
+
+        // Log activity
+        if (business_id) {
+          await query(
+            `INSERT INTO activities (business_id, call_id, user_id, type, title)
+             VALUES ($1, $2, $3, 'call_uploaded', 'Call recording uploaded')`,
+            [business_id, call.id, req.user.id]
+          );
+        }
+
+        return call;
+      } catch (fileErr) {
+        console.error(`[Zip Upload] Error processing file entry ${entry.entryName}:`, fileErr);
+        return null;
       }
+    }));
+
+    const results = await Promise.all(uploadPromises);
+    const createdCalls = results.filter(Boolean);
+
+    // Process transcription queue under the global queue manager
+    (async () => {
+      await Promise.all(createdCalls.map(call => {
+        console.log(`[Batch Job] Enqueuing call ID: ${call.id} into global transcription queue`);
+        return queueTranscription(call.id, call.file_key, pitchThreshold);
+      }));
+      console.log(`[Batch Job] Enqueued all ${createdCalls.length} calls successfully`);
     })().catch(console.error);
 
     sendSuccess(res, {

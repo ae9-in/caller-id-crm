@@ -7,9 +7,13 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
-    // Test database connection
-    await pool.query('SELECT 1');
-    logger.info('✅ Database connected successfully');
+    // Ensure target_quota column exists (migration)
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS target_quota INTEGER DEFAULT 0');
+    // Ensure business pitch script columns exist (migration)
+    await pool.query('ALTER TABLE businesses ADD COLUMN IF NOT EXISTS pitch_pdf_filename VARCHAR(255)');
+    await pool.query('ALTER TABLE businesses ADD COLUMN IF NOT EXISTS pitch_pdf_text TEXT');
+    await pool.query('ALTER TABLE businesses ADD COLUMN IF NOT EXISTS pitch_pdf_keywords JSONB DEFAULT \'[]\'');
+    logger.info('✅ Database connected and migrated successfully');
 
     app.listen(PORT, () => {
       logger.info(`🚀 Call Intelligence CRM API running on port ${PORT}`);

@@ -2,6 +2,7 @@ import api from './api'
 
 export const analyticsService = {
   getDashboard: () => api.get('/analytics/dashboard'),
+  getBusinessWiseStats: () => api.get('/analytics/business-stats'),
   getCallsPerDay: (days) => api.get('/analytics/calls-per-day', { params: { days } }),
   getCallsPerUser: () => api.get('/analytics/calls-per-user'),
   getOutcomes: () => api.get('/analytics/outcomes'),
@@ -34,6 +35,10 @@ export const adminService = {
   getAuditLogs: (params) => api.get('/admin/audit-logs', { params }),
   getAISettings: () => api.get('/admin/ai-settings'),
   updateAISettings: (settings) => api.put('/admin/ai-settings', { settings }),
+  getPitchDetails: () => api.get('/admin/pitch-pdf'),
+  uploadPitchPdf: (formData) => api.post('/admin/pitch-pdf', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
 }
 
 export const userService = {
