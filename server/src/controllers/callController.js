@@ -132,7 +132,7 @@ const uploadCall = async (req, res, next) => {
         duplicateOfId,
         call_date || new Date(),
         durationSeconds,
-        audio_language || 'en',
+        audio_language || 'auto',
         transcription_lang || 'en',
       ]
     );
@@ -392,7 +392,7 @@ const AdmZip = require('adm-zip');
             isDuplicate,
             duplicateOfId,
             durationSeconds,
-            audio_language || 'en',
+            audio_language || 'auto',
             transcription_lang || 'en',
           ]
         );

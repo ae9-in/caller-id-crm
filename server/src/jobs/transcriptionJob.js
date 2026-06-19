@@ -75,7 +75,7 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10) => {
     }
     let duration = callResult.rows[0]?.duration_seconds || 0;
     const fileSize = callResult.rows[0]?.file_size || 0;
-    const audioLanguage = callResult.rows[0]?.audio_language || 'en';
+    const audioLanguage = callResult.rows[0]?.audio_language || 'auto';
     const transcriptionLang = callResult.rows[0]?.transcription_lang || 'en';
 
     // Transcribe

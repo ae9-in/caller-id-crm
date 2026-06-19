@@ -554,7 +554,9 @@ const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioL
       body: JSON.stringify({
         audio_url: audioUrl,
         speaker_labels: true,
-        ...(audioLanguage && audioLanguage !== 'auto' ? { language_code: audioLanguage } : {})
+        ...(audioLanguage && audioLanguage !== 'auto' 
+          ? { language_code: audioLanguage } 
+          : { language_detection: true })
       })
     });
 

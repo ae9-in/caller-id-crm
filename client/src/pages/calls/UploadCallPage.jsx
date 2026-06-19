@@ -17,7 +17,7 @@ const UploadCallPage = () => {
     title: '',
     business_id: prefill.business_id || '',
     call_date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
-    audio_language: 'en',
+    audio_language: 'auto',
     transcription_lang: 'en',
   })
   const [businesses, setBusinesses] = useState([])
