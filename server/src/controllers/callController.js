@@ -98,10 +98,10 @@ const uploadCall = async (req, res, next) => {
     const settingResult = await query(`SELECT value FROM ai_settings WHERE key = 'pitch_threshold_seconds'`);
     const pitchThreshold = parseInt(settingResult.rows[0]?.value || '10');
 
-    // Parse duration using music-metadata from buffer
+    // Parse duration using music-metadata from buffer (ESM-only package, must use dynamic import)
     let durationSeconds = 0;
     try {
-      const mm = require('music-metadata');
+      const mm = await import('music-metadata');
       const metadata = await mm.parseBuffer(file.buffer, { mimeType: file.mimetype });
       durationSeconds = Math.round(metadata.format.duration || 0);
       console.log(`[Upload] Parsed audio duration locally: ${durationSeconds} seconds`);
@@ -319,7 +319,8 @@ const AdmZip = require('adm-zip');
     const settingResult = await query(`SELECT value FROM ai_settings WHERE key = 'pitch_threshold_seconds'`);
     const pitchThreshold = parseInt(settingResult.rows[0]?.value || '10');
 
-    const mm = require('music-metadata');
+    // music-metadata v11+ is ESM-only — must use dynamic import
+    const mm = await import('music-metadata');
     const uploadLimit = pLimit(8); // Cap S3/db upload concurrency to 8
 
     const uploadPromises = audioEntries.map(entry => uploadLimit(async () => {

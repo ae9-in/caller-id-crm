@@ -11,6 +11,9 @@
     "db:init": "node -e \"const {pool} = require('./src/config/database'); const fs = require('fs'); pool.query(fs.readFileSync('./database/schema.sql','utf8')).then(()=>console.log('Schema applied')).catch(console.error).finally(()=>pool.end())\"",
     "db:seed": "node -e \"const {pool} = require('./src/config/database'); const fs = require('fs'); pool.query(fs.readFileSync('./database/seed.sql','utf8')).then(()=>console.log('Seed data applied')).catch(console.error).finally(()=>pool.end())\""
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.450.0",
     "@aws-sdk/s3-request-presigner": "^3.450.0",

@@ -20,19 +20,25 @@ if (
   };
 }
 
-const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+// Safe timezone detection — never crashes
+let tz = 'UTC';
+try {
+  tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+} catch (e) {
+  tz = 'UTC';
+}
 
 const pool = new Pool({
   ...poolConfig,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000, // 5s timeout for Neon spinup
+  max: process.env.NODE_ENV === 'production' ? 5 : 20, // Serverless: use fewer connections
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 10000, // 10s timeout for Neon cold starts
   options: `-c timezone=${tz}`,
 });
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
-  process.exit(-1);
+  // Do NOT call process.exit() — it crashes serverless functions
+  console.error('Unexpected error on idle pg client', err.message);
 });
 
 const query = (text, params) => pool.query(text, params);

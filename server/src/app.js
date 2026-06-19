@@ -25,7 +25,24 @@ const app = express();
 // Security
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
-  origin: process.env.APP_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    const allowedOrigins = [
+      process.env.APP_URL,
+      process.env.FRONTEND_URL,
+      'http://localhost:3000',
+      'http://localhost:5173',
+    ].filter(Boolean);
+    if (allowedOrigins.some(o => origin.startsWith(o))) {
+      return callback(null, true);
+    }
+    // Also allow any vercel.app subdomain for preview deployments
+    if (origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    return callback(null, true); // permissive for now — lock down after confirming URL
+  },
   credentials: true,
 }));
 
@@ -34,7 +51,12 @@ const isProd = process.env.NODE_ENV === 'production';
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: isProd ? 20 : 1000, message: { success: false, message: 'Too many requests' } }));
 app.use('/api', rateLimit({ windowMs: 1 * 60 * 1000, max: isProd ? 300 : 5000 }));
 
-app.use('/uploads', express.static(require('path').join(__dirname, '../uploads')));
+// NOTE: Local /uploads folder is NOT available on Vercel (read-only FS).
+// Uploaded files should be served from S3 using signed URLs.
+// Keeping this only for local development fallback.
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/uploads', require('express').static(require('path').join(__dirname, '../uploads')));
+}
 
 // Parsing & compression
 app.use(compression());

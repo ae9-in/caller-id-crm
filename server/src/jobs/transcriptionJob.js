@@ -18,29 +18,22 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10) => {
     // Mark as processing
     await query(`UPDATE calls SET status = 'processing' WHERE id = $1`, [callId]);
 
-    // Fetch audio from storage (or use buffer if stored locally)
+    // Fetch audio from cloud storage (no local disk on Vercel)
     let fileBuffer = null;
     if (fileKey) {
       try {
-        const path = require('path');
-        const fs = require('fs');
-        const localPath = path.join(__dirname, '../../uploads', fileKey);
-        
-        if (fs.existsSync(localPath)) {
-          logger.info(`[Job] Reading uploaded audio file directly from local disk: ${localPath}`);
-          fileBuffer = fs.readFileSync(localPath);
-        } else {
-          const signedUrl = await storageService.getSignedUrl(fileKey);
-          if (signedUrl && signedUrl.startsWith('http')) {
-            const fetch = (await import('node-fetch')).default;
-            const response = await fetch(signedUrl);
-            fileBuffer = Buffer.from(await response.arrayBuffer());
-          }
+        const signedUrl = await storageService.getSignedUrl(fileKey);
+        if (signedUrl && signedUrl.startsWith('http')) {
+          // Use native fetch (Node 18+) — no node-fetch needed
+          const response = await fetch(signedUrl);
+          if (!response.ok) throw new Error(`Storage fetch failed: ${response.status}`);
+          fileBuffer = Buffer.from(await response.arrayBuffer());
         }
       } catch (e) {
         logger.warn(`[Job] Could not fetch file from storage: ${e.message}`);
       }
     }
+
 
     // Get call details (duration, file size, languages)
     const callResult = await query(`SELECT duration_seconds, file_size, audio_language, transcription_lang, business_id FROM calls WHERE id = $1`, [callId]);
