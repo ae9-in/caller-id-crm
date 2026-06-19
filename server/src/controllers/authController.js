@@ -26,24 +26,8 @@ const login = async (req, res, next) => {
     );
 
     const user = result.rows[0];
-    // If email not found, allow any Gmail address to log in using a demo agent account
+    // If no user found, reject login
     if (!user) {
-      const gmailRegex = /^[A-Z0-9._%+-]+@gmail\.com$/i;
-      if (gmailRegex.test(email)) {
-        // Fetch a demo agent (any active agent) to use for Gmail login
-        const agentResult = await query(`SELECT u.*, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'agent' AND u.is_active = true LIMIT 1`);
-        if (agentResult.rows.length > 0) {
-          const demoAgent = agentResult.rows[0];
-          // Proceed with demoAgent as the logged-in user
-          const isValid = await bcrypt.compare(password, demoAgent.password_hash);
-          if (!isValid) return sendError(res, 401, 'Invalid email or password');
-          // Update last login for demo agent
-          await query(`UPDATE users SET last_login = NOW() WHERE id = $1`, [demoAgent.id]);
-          const token = generateToken(demoAgent.id);
-          const { password_hash, reset_token, reset_token_expiry, ...safeUser } = demoAgent;
-          return sendSuccess(res, { token, user: { ...safeUser, role: demoAgent.role_name } }, 'Login successful');
-        }
-      }
       return sendError(res, 401, 'Invalid email or password');
     }
     if (!user.is_active) return sendError(res, 401, 'Account is deactivated');

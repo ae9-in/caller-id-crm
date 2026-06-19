@@ -34,9 +34,7 @@ async function clearDemoData() {
 
     await client.query('COMMIT');
     console.log('Demo data successfully cleared! The database is now fresh and ready for real-time CRM usage.');
-    console.log('Default login remaining:');
-    console.log(' - Email: admin@callcrm.com');
-    console.log(' - Password: password');
+    // Note: admin credentials remain unchanged (email: admin@callcrm.com)
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Failed to clear demo data:', error);
