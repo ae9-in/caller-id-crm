@@ -560,7 +560,62 @@ const cleanTranscriptText = (text) => {
   return cleanedWords.join(' ');
 };
 
-const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioLanguage = 'en', transcriptionLang = 'en') => {
+const parseAssemblyAITranscript = (pollData) => {
+  const utterances = pollData.utterances || [];
+  const segments = utterances.map((u) => ({
+    start: u.start / 1000,
+    end: u.end / 1000,
+    text: u.text,
+    speaker: u.speaker === 'A' || u.speaker === '1' ? 'Agent' : 'Customer'
+  }));
+  
+  if (segments.length === 0 && pollData.text) {
+    segments.push({
+      start: 0,
+      end: pollData.audio_duration || 10,
+      text: pollData.text,
+      speaker: 'Agent'
+    });
+  }
+  
+  const cleanedText = cleanTranscriptText(pollData.text || '');
+  const cleanedSegments = segments.map(seg => ({
+    ...seg,
+    text: cleanTranscriptText(seg.text)
+  }));
+
+  return {
+    text: cleanedText,
+    segments: cleanedSegments,
+    language: pollData.language_code || 'en',
+    duration: pollData.audio_duration || 0
+  };
+};
+
+const getAssemblyAITranscript = async (transcriptId) => {
+  const apiKey = process.env.ASSEMBLYAI_API_KEY;
+  if (!apiKey || apiKey.includes('your_') || apiKey === '') {
+    throw new Error('AssemblyAI API Key not configured');
+  }
+  const url = `https://api.assemblyai.com/v2/transcript/${transcriptId}`;
+  const res = await fetch(url, {
+    headers: { 'authorization': apiKey }
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`AssemblyAI fetch transcript HTTP ${res.status}: ${errText}`);
+  }
+  const pollData = await res.json();
+  if (pollData.status === 'completed') {
+    return parseAssemblyAITranscript(pollData);
+  } else if (pollData.status === 'error') {
+    throw new Error(`AssemblyAI transcription failed: ${pollData.error}`);
+  } else {
+    throw new Error(`AssemblyAI transcript is in status: ${pollData.status}`);
+  }
+};
+
+const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioLanguage = 'en', transcriptionLang = 'en', webhookUrl = null) => {
   try {
     logger.info('[AI] Starting AssemblyAI transcription pipeline...');
     
@@ -586,19 +641,26 @@ const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioL
 
     // 2. Start transcription
     logger.info('[AI] Initiating AssemblyAI transcription with speaker labels...');
+    const body = {
+      audio_url: audioUrl,
+      speaker_labels: true,
+      ...(audioLanguage && audioLanguage !== 'auto' 
+        ? { language_code: audioLanguage } 
+        : { language_detection: true })
+    };
+    if (webhookUrl) {
+      body.webhook_url = webhookUrl;
+      body.webhook_auth_header_name = 'X-AssemblyAI-Webhook-Secret';
+      body.webhook_auth_header_value = process.env.JWT_SECRET || 'secret';
+    }
+
     const startRes = await fetch('https://api.assemblyai.com/v2/transcript', {
       method: 'POST',
       headers: {
         'authorization': apiKey,
         'content-type': 'application/json'
       },
-      body: JSON.stringify({
-        audio_url: audioUrl,
-        speaker_labels: true,
-        ...(audioLanguage && audioLanguage !== 'auto' 
-          ? { language_code: audioLanguage } 
-          : { language_detection: true })
-      })
+      body: JSON.stringify(body)
     });
 
     if (!startRes.ok) {
@@ -609,6 +671,11 @@ const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioL
     const startData = await startRes.json();
     const transcriptId = startData.id;
     logger.info(`[AI] Transcription job queued. ID: ${transcriptId}`);
+
+    if (webhookUrl) {
+      logger.info(`[AI] Webhook URL provided. Returning queued status immediately with transcript ID: ${transcriptId}`);
+      return { queued: true, transcriptId };
+    }
 
     // 3. Poll for result
     const pollUrl = `https://api.assemblyai.com/v2/transcript/${transcriptId}`;
@@ -630,35 +697,7 @@ const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioL
       logger.info(`[AI] Poll status: ${pollData.status}`);
       
       if (pollData.status === 'completed') {
-        const utterances = pollData.utterances || [];
-        const segments = utterances.map((u) => ({
-          start: u.start / 1000,
-          end: u.end / 1000,
-          text: u.text,
-          speaker: u.speaker === 'A' || u.speaker === '1' ? 'Agent' : 'Customer'
-        }));
-        
-        if (segments.length === 0 && pollData.text) {
-          segments.push({
-            start: 0,
-            end: pollData.audio_duration || 10,
-            text: pollData.text,
-            speaker: 'Agent'
-          });
-        }
-        
-        const cleanedText = cleanTranscriptText(pollData.text || '');
-        const cleanedSegments = segments.map(seg => ({
-          ...seg,
-          text: cleanTranscriptText(seg.text)
-        }));
-
-        return {
-          text: cleanedText,
-          segments: cleanedSegments,
-          language: pollData.language_code || 'en',
-          duration: pollData.audio_duration || 0
-        };
+        return parseAssemblyAITranscript(pollData);
       } else if (pollData.status === 'error') {
         throw new Error(`AssemblyAI transcription failed: ${pollData.error}`);
       }
@@ -675,7 +714,7 @@ const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioL
  * Transcribe audio using OpenAI Whisper (or AssemblyAI if config present)
  * Returns a mock transcript if OpenAI not configured or fails
  */
-const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transcriptionLang = 'en') => {
+const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transcriptionLang = 'en', webhookUrl = null) => {
   // 1️⃣ Try OpenAI Whisper first
   try {
     const client = getOpenAIClient();
@@ -733,7 +772,7 @@ const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transc
   const assemblyKey = process.env.ASSEMBLYAI_API_KEY;
   if (assemblyKey && !assemblyKey.includes('your_') && assemblyKey !== '') {
     try {
-      return await transcribeAudioWithAssemblyAI(fileBuffer, assemblyKey, fileKey, audioLanguage, transcriptionLang);
+      return await transcribeAudioWithAssemblyAI(fileBuffer, assemblyKey, fileKey, audioLanguage, transcriptionLang, webhookUrl);
     } catch (err) {
       logger.warn(`[AI] AssemblyAI transcription failed: ${err.message}.`);
     }
@@ -917,4 +956,4 @@ const analyzeSpeakers = (segments, totalDuration) => {
   };
 };
 
-module.exports = { transcribeAudio, generateSummary, analyzeSpeakers };
+module.exports = { transcribeAudio, generateSummary, analyzeSpeakers, getAssemblyAITranscript, getMockTranscript };

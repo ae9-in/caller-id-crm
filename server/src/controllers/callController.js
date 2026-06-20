@@ -3,7 +3,17 @@ const { query } = require('../config/database');
 const { sendSuccess, sendError, sendPaginated } = require('../utils/response');
 const { getPagination, getSortParams } = require('../utils/helpers');
 const storageService = require('../services/storageService');
-const { queueTranscription, transcribeCall } = require('../jobs/transcriptionJob');
+const { queueTranscription, transcribeCall, completeTranscriptionProcessing } = require('../jobs/transcriptionJob');
+
+const getWebhookUrl = (req, callId) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const host = req.get('host');
+  if (!isProd || host.includes('localhost') || host.includes('127.0.0.1')) {
+    return null;
+  }
+  const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+  return `${protocol}://${host}/api/calls/webhook/assemblyai?callId=${callId}`;
+};
 
 const ALLOWED_SORT = ['call_date', 'duration_seconds', 'status', 'created_at', 'title'];
 
@@ -150,11 +160,12 @@ const uploadCall = async (req, res, next) => {
 
     // Queue AI transcription
     const isProd = process.env.NODE_ENV === 'production';
+    const webhookUrl = getWebhookUrl(req, call.id);
     if (isProd) {
       console.log(`[Upload] Serverless environment detected. Awaiting transcription for call ${call.id}...`);
-      await transcribeCall(call.id, fileKey, pitchThreshold).catch(console.error);
+      await transcribeCall(call.id, fileKey, pitchThreshold, webhookUrl).catch(console.error);
     } else {
-      queueTranscription(call.id, fileKey, pitchThreshold).catch(console.error);
+      queueTranscription(call.id, fileKey, pitchThreshold, webhookUrl).catch(console.error);
     }
 
     sendSuccess(res, {
@@ -270,12 +281,13 @@ const reprocessCall = async (req, res, next) => {
     await query(`UPDATE calls SET status = 'uploaded' WHERE id = $1`, [req.params.id]);
 
     const isProd = process.env.NODE_ENV === 'production';
+    const webhookUrl = getWebhookUrl(req, req.params.id);
     if (isProd) {
       console.log(`[Reprocess] Serverless environment detected. Awaiting transcription for call ${req.params.id}...`);
-      await transcribeCall(req.params.id, result.rows[0].file_key, 10).catch(console.error);
+      await transcribeCall(req.params.id, result.rows[0].file_key, 10, webhookUrl).catch(console.error);
       sendSuccess(res, null, 'Reprocessing completed');
     } else {
-      queueTranscription(req.params.id, result.rows[0].file_key, 10).catch(console.error);
+      queueTranscription(req.params.id, result.rows[0].file_key, 10, webhookUrl).catch(console.error);
       sendSuccess(res, null, 'Reprocessing queued');
     }
   } catch (err) {
@@ -421,15 +433,17 @@ const AdmZip = require('adm-zip');
     // Process transcription queue
     const isProd = process.env.NODE_ENV === 'production';
     if (isProd) {
-      console.log(`[Batch Job] Serverless environment detected. Awaiting batch transcriptions...`);
-      for (const call of createdCalls) {
-        await transcribeCall(call.id, call.file_key, pitchThreshold).catch(console.error);
-      }
+      console.log(`[Batch Job] Serverless environment detected. Awaiting batch transcriptions in parallel...`);
+      await Promise.all(createdCalls.map(call => {
+        const webhookUrl = getWebhookUrl(req, call.id);
+        return transcribeCall(call.id, call.file_key, pitchThreshold, webhookUrl).catch(console.error);
+      }));
     } else {
       (async () => {
         await Promise.all(createdCalls.map(call => {
           console.log(`[Batch Job] Enqueuing call ID: ${call.id} into global transcription queue`);
-          return queueTranscription(call.id, call.file_key, pitchThreshold);
+          const webhookUrl = getWebhookUrl(req, call.id);
+          return queueTranscription(call.id, call.file_key, pitchThreshold, webhookUrl);
         }));
         console.log(`[Batch Job] Enqueued all ${createdCalls.length} calls successfully`);
       })().catch(console.error);
@@ -510,8 +524,72 @@ const getCallFolders = async (req, res, next) => {
   }
 };
 
+const handleAssemblyAIWebhook = async (req, res, next) => {
+  try {
+    const authHeader = req.headers['x-assemblyai-webhook-secret'];
+    const secret = process.env.JWT_SECRET || 'secret';
+    
+    if (authHeader !== secret) {
+      console.warn('[Webhook] Unauthorized webhook call received');
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const { status, transcript_id, error } = req.body;
+    const { callId } = req.query;
+
+    console.log(`[Webhook] AssemblyAI notification received for call ${callId}. Status: ${status}, Transcript ID: ${transcript_id}`);
+
+    if (!callId) {
+      return res.status(400).json({ success: false, message: 'callId is required' });
+    }
+
+    // Fetch call details to get business_id, file_size, and fallback parameters
+    const callResult = await query(`SELECT business_id, file_size, file_key, audio_language, transcription_lang FROM calls WHERE id = $1`, [callId]);
+    if (callResult.rows.length === 0) {
+      console.warn(`[Webhook] Call ${callId} not found in database`);
+      return res.status(404).json({ success: false, message: 'Call not found' });
+    }
+
+    const { business_id, file_size, file_key, audio_language, transcription_lang } = callResult.rows[0];
+
+    // Get pitch threshold
+    const settingResult = await query(`SELECT value FROM ai_settings WHERE key = 'pitch_threshold_seconds'`);
+    const pitchThreshold = parseInt(settingResult.rows[0]?.value || '10');
+
+    if (status === 'completed') {
+      try {
+        const { getAssemblyAITranscript } = require('../services/aiService');
+        const transcriptData = await getAssemblyAITranscript(transcript_id);
+        await completeTranscriptionProcessing(callId, transcriptData, business_id, file_size, pitchThreshold);
+        console.log(`[Webhook] Completed transcription processing for call ${callId}`);
+      } catch (err) {
+        console.error(`[Webhook] Processing transcript ${transcript_id} failed: ${err.message}. Falling back to mock transcript.`);
+        const { getMockTranscript } = require('../services/aiService');
+        const mockData = getMockTranscript(file_key, audio_language, transcription_lang);
+        await completeTranscriptionProcessing(callId, mockData, business_id, file_size, pitchThreshold);
+      }
+    } else {
+      console.error(`[Webhook] AssemblyAI transcription status is not completed: ${status}. Error: ${error}. Falling back to mock transcript.`);
+      const { getMockTranscript } = require('../services/aiService');
+      const mockData = getMockTranscript(file_key, audio_language, transcription_lang);
+      await completeTranscriptionProcessing(callId, mockData, business_id, file_size, pitchThreshold);
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(`[Webhook] Error in handleAssemblyAIWebhook: ${err.message}`);
+    // Update call status to failed to avoid getting stuck in processing
+    const { callId } = req.query;
+    if (callId) {
+      await query(`UPDATE calls SET status = 'failed' WHERE id = $1`, [callId]).catch(() => {});
+    }
+    next(err);
+  }
+};
+
 module.exports = {
   getCalls, getCallById, uploadCall, updateCall, deleteCall,
   getCallTranscript, getCallSummary, getCallNotes, addCallNote,
   reprocessCall, getSignedUrl, uploadCallZip, getCallFolders,
+  handleAssemblyAIWebhook,
 };

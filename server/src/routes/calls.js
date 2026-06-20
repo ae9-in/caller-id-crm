@@ -4,11 +4,15 @@ const {
   getCalls, getCallById, uploadCall, updateCall, deleteCall,
   getCallTranscript, getCallSummary, getCallNotes, addCallNote,
   reprocessCall, getSignedUrl, uploadCallZip, getCallFolders,
+  handleAssemblyAIWebhook,
 } = require('../controllers/callController');
 const { authenticate } = require('../middleware/auth');
 const { requireAgent, requireManager } = require('../middleware/rbac');
 const { upload, uploadZip, handleMulterError } = require('../middleware/upload');
 const { auditLogger } = require('../middleware/auditLogger');
+
+// Public endpoint for AssemblyAI webhooks
+router.post('/webhook/assemblyai', handleAssemblyAIWebhook);
 
 router.use(authenticate);
 
