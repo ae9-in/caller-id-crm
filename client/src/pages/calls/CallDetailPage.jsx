@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -52,11 +52,28 @@ const CallDetailPage = () => {
   const [addingNote, setAddingNote] = useState(false)
   const [copied, setCopied] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [reprocessing, setReprocessing] = useState(false)
 
-  const { data: call, loading: callLoading } = useApi(() => callService.getById(id), [id])
-  const { data: transcript, loading: tLoading } = useApi(() => callService.getTranscript(id), [id])
-  const { data: summary, loading: sLoading } = useApi(() => callService.getSummary(id), [id])
+  const { data: call, loading: callLoading, refetch: refetchCall } = useApi(() => callService.getById(id), [id])
+  const { data: transcript, loading: tLoading, refetch: refetchTranscript } = useApi(() => callService.getTranscript(id), [id])
+  const { data: summary, loading: sLoading, refetch: refetchSummary } = useApi(() => callService.getSummary(id), [id])
   const { data: notes, loading: nLoading, refetch: refetchNotes } = useApi(() => callService.getNotes(id), [id])
+
+  // Auto-refresh when call is uploading or processing
+  useEffect(() => {
+    if (!call || (call.status !== 'uploaded' && call.status !== 'processing')) {
+      return
+    }
+
+    const interval = setInterval(() => {
+      refetchCall()
+      refetchTranscript()
+      refetchSummary()
+      refetchNotes()
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [call?.status, refetchCall, refetchTranscript, refetchSummary, refetchNotes])
 
   const handleCopyTranscript = () => {
     if (transcript?.full_text) {
@@ -79,8 +96,16 @@ const CallDetailPage = () => {
   }
 
   const handleReprocess = async () => {
-    await callService.reprocess(id)
-    toast.success('Reprocessing queued')
+    setReprocessing(true)
+    try {
+      await callService.reprocess(id)
+      toast.success('Reprocessing queued')
+      refetchCall()
+    } catch (err) {
+      toast.error('Failed to queue reprocessing')
+    } finally {
+      setReprocessing(false)
+    }
   }
 
   const handleDeleteCall = async () => {
@@ -128,8 +153,8 @@ const CallDetailPage = () => {
           </div>
           {isManager() && (
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={handleReprocess}>
-                <RefreshCw size={14} /> Reprocess
+              <Button variant="ghost" size="sm" onClick={handleReprocess} disabled={reprocessing}>
+                <RefreshCw size={14} className={clsx(reprocessing && 'animate-spin')} /> Reprocess
               </Button>
               <Button variant="danger" size="sm" onClick={handleDeleteCall} disabled={deleting}>
                 <Trash2 size={14} /> Delete
