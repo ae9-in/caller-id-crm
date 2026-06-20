@@ -519,6 +519,47 @@ const getMockSummary = (transcript, duration) => {
   };
 };
 
+/**
+ * Helper to collapse/clean speech-to-text hallucination repetition loops
+ * (e.g. repeated silent/noisy patterns like "email? email? email?")
+ */
+const cleanTranscriptText = (text) => {
+  if (!text) return '';
+  const words = text.split(/\s+/);
+  const cleanedWords = [];
+  let i = 0;
+  
+  const normalizeWord = (w) => {
+    if (!w) return '';
+    return w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  };
+  
+  while (i < words.length) {
+    let word = words[i];
+    let runCount = 1;
+    const norm = normalizeWord(word);
+    
+    while (
+      i + runCount < words.length && 
+      normalizeWord(words[i + runCount]) === norm &&
+      norm !== ''
+    ) {
+      runCount++;
+    }
+    
+    if (runCount >= 4) {
+      // Keep only first two occurrences of the repeated word
+      cleanedWords.push(word);
+      cleanedWords.push(words[i + 1]);
+      i += runCount;
+    } else {
+      cleanedWords.push(word);
+      i++;
+    }
+  }
+  return cleanedWords.join(' ');
+};
+
 const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioLanguage = 'en', transcriptionLang = 'en') => {
   try {
     logger.info('[AI] Starting AssemblyAI transcription pipeline...');
@@ -606,9 +647,15 @@ const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioL
           });
         }
         
+        const cleanedText = cleanTranscriptText(pollData.text || '');
+        const cleanedSegments = segments.map(seg => ({
+          ...seg,
+          text: cleanTranscriptText(seg.text)
+        }));
+
         return {
-          text: pollData.text || '',
-          segments,
+          text: cleanedText,
+          segments: cleanedSegments,
           language: pollData.language_code || 'en',
           duration: pollData.audio_duration || 0
         };
@@ -646,8 +693,11 @@ const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transc
         }, { timeout: 300000, maxRetries: 3 });
 
         return {
-          text: response.text,
-          segments: response.segments || [],
+          text: cleanTranscriptText(response.text || ''),
+          segments: (response.segments || []).map(seg => ({
+            ...seg,
+            text: cleanTranscriptText(seg.text)
+          })),
           language: 'en',
         };
       } else {
@@ -666,8 +716,11 @@ const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transc
         const response = await client.audio.transcriptions.create(transcriptOptions, { timeout: 300000, maxRetries: 3 });
 
         return {
-          text: response.text,
-          segments: response.segments || [],
+          text: cleanTranscriptText(response.text || ''),
+          segments: (response.segments || []).map(seg => ({
+            ...seg,
+            text: cleanTranscriptText(seg.text)
+          })),
           language: response.language || audioLanguage || 'en',
         };
       }
