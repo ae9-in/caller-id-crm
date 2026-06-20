@@ -98,7 +98,7 @@ app.get('/', (req, res) => {
   res.json({
     status: 'running',
     message: 'CallCRM API Server is running. All endpoints are under /api/*',
-    version: '1.0.0',
+    version: '1.0.1-s3-direct-check',
     health: '/health',
     docs: 'Contact admin for API documentation',
   });
