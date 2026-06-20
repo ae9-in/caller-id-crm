@@ -594,11 +594,11 @@ const getPresignedUploadUrlController = async (req, res, next) => {
       return sendError(res, 400, 'fileName is required');
     }
 
-    if (storageService.hasS3Config()) {
+    if (storageService.hasStorageConfig()) {
       const fileKey = storageService.buildKey(req.user.id, business_id, fileName);
-      const uploadUrl = await storageService.getPresignedUploadUrl(fileKey, fileType || 'application/octet-stream');
-      if (uploadUrl) {
-        return sendSuccess(res, { directUpload: true, uploadUrl, fileKey });
+      const uploadData = await storageService.getPresignedUploadUrl(fileKey, fileType || 'application/octet-stream');
+      if (uploadData) {
+        return sendSuccess(res, uploadData);
       }
     }
     return sendSuccess(res, { directUpload: false });
@@ -611,6 +611,7 @@ const uploadCallDirect = async (req, res, next) => {
   try {
     const {
       fileKey,
+      fileUrl: clientFileUrl,
       fileName,
       fileSize,
       mimeType,
@@ -625,7 +626,7 @@ const uploadCallDirect = async (req, res, next) => {
       return sendError(res, 400, 'fileKey and fileName are required');
     }
 
-    const buffer = await storageService.getFileBuffer(fileKey);
+    const buffer = await storageService.getFileBuffer(fileKey, clientFileUrl);
     if (!buffer) {
       return sendError(res, 400, 'Could not retrieve uploaded file from storage');
     }
@@ -653,11 +654,11 @@ const uploadCallDirect = async (req, res, next) => {
       console.warn(`[Upload Direct] Could not parse audio duration: ${err.message}`);
     }
 
-    const isS3 = storageService.hasS3Config();
+    const isStorage = storageService.hasStorageConfig();
     const bucketName = process.env.STORAGE_PROVIDER === 'r2' ? process.env.R2_BUCKET : process.env.AWS_S3_BUCKET;
-    const fileUrl = isS3 
+    const fileUrl = clientFileUrl || (isStorage 
       ? `https://${bucketName}.s3.amazonaws.com/${fileKey}`
-      : `/uploads/${fileKey}`;
+      : `/uploads/${fileKey}`);
 
     const result = await query(
       `INSERT INTO calls (title, business_id, user_id, file_name, file_url, file_key, file_size, file_hash, mime_type, status, is_duplicate, duplicate_of, call_date, duration_seconds, audio_language, transcription_lang)
@@ -716,6 +717,7 @@ const uploadCallZipDirect = async (req, res, next) => {
   try {
     const {
       fileKey,
+      fileUrl,
       fileName,
       fileSize,
       business_id,
@@ -731,7 +733,7 @@ const uploadCallZipDirect = async (req, res, next) => {
     const pLimit = require('p-limit');
     const AdmZip = require('adm-zip');
 
-    const zipBuffer = await storageService.getFileBuffer(fileKey);
+    const zipBuffer = await storageService.getFileBuffer(fileKey, fileUrl);
     if (!zipBuffer) {
       return sendError(res, 400, 'Could not retrieve uploaded ZIP file from storage');
     }

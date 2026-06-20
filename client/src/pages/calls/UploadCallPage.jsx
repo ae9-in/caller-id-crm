@@ -80,21 +80,47 @@ const UploadCallPage = () => {
       }
 
       if (directUpload) {
-        // Upload to S3 directly
-        await axios.put(uploadUrl, file, {
-          headers: { 'Content-Type': file.type || 'application/octet-stream' },
-          onUploadProgress: (e) => {
-            if (e.total) {
-              setProgress(Math.round((e.loaded * 100) / e.total));
-            }
-          },
-        });
+        let uploadedUrl = '';
+        let uploadedKey = fileKey;
+
+        if (presignedRes.data.data.provider === 'cloudinary') {
+          const { fields, uploadUrl: cloudinaryUrl } = presignedRes.data.data;
+          const fd = new FormData();
+          
+          Object.entries(fields).forEach(([k, v]) => {
+            fd.append(k, v);
+          });
+          fd.append('file', file);
+
+          const cloudinaryRes = await axios.post(cloudinaryUrl, fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            onUploadProgress: (e) => {
+              if (e.total) {
+                setProgress(Math.round((e.loaded * 100) / e.total));
+              }
+            },
+          });
+
+          uploadedUrl = cloudinaryRes.data.secure_url;
+          uploadedKey = cloudinaryRes.data.public_id;
+        } else {
+          // S3 direct PUT upload
+          await axios.put(uploadUrl, file, {
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            onUploadProgress: (e) => {
+              if (e.total) {
+                setProgress(Math.round((e.loaded * 100) / e.total));
+              }
+            },
+          });
+        }
 
         // Notify backend to process and save call metadata
         let res;
         if (isZip) {
           res = await callService.uploadZipDirect({
-            fileKey,
+            fileKey: uploadedKey,
+            fileUrl: uploadedUrl || undefined,
             fileName: file.name,
             fileSize: file.size,
             business_id: form.business_id || undefined,
@@ -109,7 +135,8 @@ const UploadCallPage = () => {
             } catch {}
           }
           res = await callService.uploadDirect({
-            fileKey,
+            fileKey: uploadedKey,
+            fileUrl: uploadedUrl || undefined,
             fileName: file.name,
             fileSize: file.size,
             mimeType: file.type || 'audio/mpeg',
