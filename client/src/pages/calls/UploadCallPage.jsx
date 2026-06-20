@@ -58,14 +58,26 @@ const UploadCallPage = () => {
     try {
       const isZip = file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
       
-      // Request presigned URL
-      const presignedRes = await callService.getPresignedUpload({
-        fileName: file.name,
-        fileType: file.type || 'application/octet-stream',
-        business_id: form.business_id || undefined,
-      });
+      let directUpload = false;
+      let uploadUrl = null;
+      let fileKey = null;
 
-      const { directUpload, uploadUrl, fileKey } = presignedRes.data.data;
+      try {
+        // Request presigned URL
+        const presignedRes = await callService.getPresignedUpload({
+          fileName: file.name,
+          fileType: file.type || 'application/octet-stream',
+          business_id: form.business_id || undefined,
+        });
+        if (presignedRes.data?.data) {
+          directUpload = presignedRes.data.data.directUpload;
+          uploadUrl = presignedRes.data.data.uploadUrl;
+          fileKey = presignedRes.data.data.fileKey;
+        }
+      } catch (presignedErr) {
+        console.warn('[Upload] Presigned upload URL fetch failed, falling back to standard upload:', presignedErr.message);
+        directUpload = false;
+      }
 
       if (directUpload) {
         // Upload to S3 directly
