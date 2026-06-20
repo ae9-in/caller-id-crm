@@ -126,4 +126,63 @@ const getSignedDownloadUrl = async (key, expiresIn = 3600) => {
   }
 };
 
-module.exports = { buildKey, uploadFile, deleteFile, getSignedUrl: getSignedDownloadUrl };
+const getPresignedUploadUrl = async (key, contentType, expiresIn = 3600) => {
+  if (!hasS3Config()) {
+    return null;
+  }
+  try {
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ContentType: contentType,
+    });
+    return await getSignedUrl(s3Client, command, { expiresIn });
+  } catch (error) {
+    console.error('[Storage] Get presigned upload URL failed:', error.message);
+    return null;
+  }
+};
+
+const getFileBuffer = async (key) => {
+  if (!hasS3Config()) {
+    try {
+      const fs = require('fs');
+      const uploadDir = path.join(__dirname, '../../uploads');
+      const localPath = path.join(uploadDir, key);
+      if (fs.existsSync(localPath)) {
+        return fs.readFileSync(localPath);
+      }
+      return null;
+    } catch (err) {
+      console.error('[Storage] Local read failed:', err.message);
+      return null;
+    }
+  }
+
+  try {
+    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+    const response = await s3Client.send(command);
+    const streamToBuffer = async (stream) => {
+      return new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on('data', (chunk) => chunks.push(chunk));
+        stream.on('error', reject);
+        stream.on('end', () => resolve(Buffer.concat(chunks)));
+      });
+    };
+    return await streamToBuffer(response.Body);
+  } catch (error) {
+    console.error('[Storage] Cloud get file failed:', error.message);
+    return null;
+  }
+};
+
+module.exports = {
+  buildKey,
+  uploadFile,
+  deleteFile,
+  getSignedUrl: getSignedDownloadUrl,
+  hasS3Config,
+  getPresignedUploadUrl,
+  getFileBuffer,
+};

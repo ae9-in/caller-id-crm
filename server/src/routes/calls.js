@@ -5,6 +5,9 @@ const {
   getCallTranscript, getCallSummary, getCallNotes, addCallNote,
   reprocessCall, getSignedUrl, uploadCallZip, getCallFolders,
   handleAssemblyAIWebhook,
+  getPresignedUploadUrlController,
+  uploadCallDirect,
+  uploadCallZipDirect,
 } = require('../controllers/callController');
 const { authenticate } = require('../middleware/auth');
 const { requireAgent, requireManager } = require('../middleware/rbac');
@@ -18,6 +21,9 @@ router.use(authenticate);
 
 router.get('/', getCalls);
 router.get('/folders', getCallFolders);
+router.post('/presigned-upload', requireAgent, getPresignedUploadUrlController);
+router.post('/upload-direct', requireAgent, auditLogger('create', 'call'), uploadCallDirect);
+router.post('/upload-zip-direct', requireAgent, auditLogger('create', 'call'), uploadCallZipDirect);
 router.post('/upload', requireAgent, upload.single('audio'), handleMulterError, auditLogger('create', 'call'), uploadCall);
 router.post('/upload-zip', requireAgent, uploadZip.single('zip'), handleMulterError, auditLogger('create', 'call'), uploadCallZip);
 router.get('/:id', getCallById);

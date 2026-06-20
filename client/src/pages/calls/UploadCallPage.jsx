@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import { Upload, Phone, Building2, Check, AlertCircle } from 'lucide-react'
+import axios from 'axios'
 import { callService } from '../../services/callService'
 import { businessService } from '../../services/businessService'
 import { Button, Select, Input, Spinner, Card, PageHeader, Badge } from '../../components/ui/index'
@@ -56,32 +57,89 @@ const UploadCallPage = () => {
     setProgress(0)
     try {
       const isZip = file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
-      const fd = new FormData()
       
-      fd.append('audio_language', form.audio_language)
-      fd.append('transcription_lang', form.transcription_lang)
-      if (form.business_id) fd.append('business_id', form.business_id)
-      
-      if (isZip) {
-        fd.append('zip', file)
+      // Request presigned URL
+      const presignedRes = await callService.getPresignedUpload({
+        fileName: file.name,
+        fileType: file.type || 'application/octet-stream',
+        business_id: form.business_id || undefined,
+      });
+
+      const { directUpload, uploadUrl, fileKey } = presignedRes.data.data;
+
+      if (directUpload) {
+        // Upload to S3 directly
+        await axios.put(uploadUrl, file, {
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          onUploadProgress: (e) => {
+            if (e.total) {
+              setProgress(Math.round((e.loaded * 100) / e.total));
+            }
+          },
+        });
+
+        // Notify backend to process and save call metadata
+        let res;
+        if (isZip) {
+          res = await callService.uploadZipDirect({
+            fileKey,
+            fileName: file.name,
+            fileSize: file.size,
+            business_id: form.business_id || undefined,
+            audio_language: form.audio_language,
+            transcription_lang: form.transcription_lang,
+          });
+        } else {
+          let callDateIso = new Date().toISOString();
+          if (form.call_date) {
+            try {
+              callDateIso = new Date(form.call_date).toISOString();
+            } catch {}
+          }
+          res = await callService.uploadDirect({
+            fileKey,
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type || 'audio/mpeg',
+            title: form.title || file.name,
+            business_id: form.business_id || undefined,
+            call_date: callDateIso,
+            audio_language: form.audio_language,
+            transcription_lang: form.transcription_lang,
+          });
+        }
+        setResult(res.data.data)
+        toast.success(isZip ? `${res.data.data.count} calls successfully queued for transcription!` : 'Recording uploaded and queued for AI transcription!')
       } else {
-        fd.append('audio', file)
-        fd.append('title', form.title || file.name)
-        if (form.call_date) {
-          try {
-            fd.append('call_date', new Date(form.call_date).toISOString())
-          } catch {
-            fd.append('call_date', new Date().toISOString())
+        // Fallback: standard multipart form upload
+        const fd = new FormData()
+        fd.append('audio_language', form.audio_language)
+        fd.append('transcription_lang', form.transcription_lang)
+        if (form.business_id) fd.append('business_id', form.business_id)
+        
+        if (isZip) {
+          fd.append('zip', file)
+        } else {
+          fd.append('audio', file)
+          fd.append('title', form.title || file.name)
+          if (form.call_date) {
+            try {
+              fd.append('call_date', new Date(form.call_date).toISOString())
+            } catch {
+              fd.append('call_date', new Date().toISOString())
+            }
           }
         }
-      }
 
-      const uploadFn = isZip ? callService.uploadZip : callService.upload;
-      const res = await uploadFn(fd, (e) => {
-        setProgress(Math.round((e.loaded * 100) / e.total))
-      })
-      setResult(res.data.data)
-      toast.success(isZip ? `${res.data.data.count} calls successfully queued for transcription!` : 'Recording uploaded and queued for AI transcription!')
+        const uploadFn = isZip ? callService.uploadZip : callService.upload;
+        const res = await uploadFn(fd, (e) => {
+          if (e.total) {
+            setProgress(Math.round((e.loaded * 100) / e.total))
+          }
+        })
+        setResult(res.data.data)
+        toast.success(isZip ? `${res.data.data.count} calls successfully queued for transcription!` : 'Recording uploaded and queued for AI transcription!')
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Upload failed')
     } finally {

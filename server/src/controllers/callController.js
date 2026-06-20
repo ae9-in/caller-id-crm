@@ -587,9 +587,290 @@ const handleAssemblyAIWebhook = async (req, res, next) => {
   }
 };
 
+const getPresignedUploadUrlController = async (req, res, next) => {
+  try {
+    const { fileName, fileType, business_id } = req.body;
+    if (!fileName) {
+      return sendError(res, 400, 'fileName is required');
+    }
+
+    if (storageService.hasS3Config()) {
+      const fileKey = storageService.buildKey(req.user.id, business_id, fileName);
+      const uploadUrl = await storageService.getPresignedUploadUrl(fileKey, fileType || 'application/octet-stream');
+      if (uploadUrl) {
+        return sendSuccess(res, { directUpload: true, uploadUrl, fileKey });
+      }
+    }
+    return sendSuccess(res, { directUpload: false });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const uploadCallDirect = async (req, res, next) => {
+  try {
+    const {
+      fileKey,
+      fileName,
+      fileSize,
+      mimeType,
+      title,
+      business_id,
+      call_date,
+      audio_language,
+      transcription_lang,
+    } = req.body;
+
+    if (!fileKey || !fileName) {
+      return sendError(res, 400, 'fileKey and fileName are required');
+    }
+
+    const buffer = await storageService.getFileBuffer(fileKey);
+    if (!buffer) {
+      return sendError(res, 400, 'Could not retrieve uploaded file from storage');
+    }
+
+    const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
+
+    const dupCheck = await query(`SELECT c.id, c.title FROM calls c WHERE c.file_hash = $1`, [fileHash]);
+    let isDuplicate = false;
+    let duplicateOfId = null;
+    if (dupCheck.rows.length > 0) {
+      isDuplicate = true;
+      duplicateOfId = dupCheck.rows[0].id;
+    }
+
+    const settingResult = await query(`SELECT value FROM ai_settings WHERE key = 'pitch_threshold_seconds'`);
+    const pitchThreshold = parseInt(settingResult.rows[0]?.value || '10');
+
+    let durationSeconds = 0;
+    try {
+      const mm = await import('music-metadata');
+      const metadata = await mm.parseBuffer(buffer, { mimeType: mimeType || 'audio/mpeg' });
+      durationSeconds = Math.round(metadata.format.duration || 0);
+      console.log(`[Upload Direct] Parsed audio duration: ${durationSeconds} seconds`);
+    } catch (err) {
+      console.warn(`[Upload Direct] Could not parse audio duration: ${err.message}`);
+    }
+
+    const isS3 = storageService.hasS3Config();
+    const bucketName = process.env.STORAGE_PROVIDER === 'r2' ? process.env.R2_BUCKET : process.env.AWS_S3_BUCKET;
+    const fileUrl = isS3 
+      ? `https://${bucketName}.s3.amazonaws.com/${fileKey}`
+      : `/uploads/${fileKey}`;
+
+    const result = await query(
+      `INSERT INTO calls (title, business_id, user_id, file_name, file_url, file_key, file_size, file_hash, mime_type, status, is_duplicate, duplicate_of, call_date, duration_seconds, audio_language, transcription_lang)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'uploaded', $10, $11, $12, $13, $14, $15)
+       RETURNING *`,
+      [
+        title || fileName,
+        business_id || null,
+        req.user.id,
+        fileName,
+        fileUrl,
+        fileKey,
+        fileSize || buffer.length,
+        fileHash,
+        mimeType || 'audio/mpeg',
+        isDuplicate,
+        duplicateOfId,
+        call_date || new Date(),
+        durationSeconds,
+        audio_language || 'auto',
+        transcription_lang || 'en',
+      ]
+    );
+
+    const call = result.rows[0];
+
+    if (business_id) {
+      await query(
+        `INSERT INTO activities (business_id, call_id, user_id, type, title)
+         VALUES ($1, $2, $3, 'call_uploaded', 'Call recording uploaded')`,
+        [business_id, call.id, req.user.id]
+      );
+    }
+
+    const isProd = process.env.NODE_ENV === 'production';
+    const webhookUrl = getWebhookUrl(req, call.id);
+    if (isProd) {
+      console.log(`[Upload Direct] Serverless environment detected. Awaiting transcription for call ${call.id}...`);
+      await transcribeCall(call.id, fileKey, pitchThreshold, webhookUrl).catch(console.error);
+    } else {
+      queueTranscription(call.id, fileKey, pitchThreshold, webhookUrl).catch(console.error);
+    }
+
+    sendSuccess(res, {
+      ...call,
+      is_duplicate: isDuplicate,
+      duplicate_of: duplicateOfId,
+      duplicate_title: dupCheck.rows[0]?.title || null,
+    }, 'Recording uploaded. Transcription queued.', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const uploadCallZipDirect = async (req, res, next) => {
+  try {
+    const {
+      fileKey,
+      fileName,
+      fileSize,
+      business_id,
+      audio_language,
+      transcription_lang,
+    } = req.body;
+
+    if (!fileKey) {
+      return sendError(res, 400, 'fileKey is required');
+    }
+
+    const path = require('path');
+    const pLimit = require('p-limit');
+    const AdmZip = require('adm-zip');
+
+    const zipBuffer = await storageService.getFileBuffer(fileKey);
+    if (!zipBuffer) {
+      return sendError(res, 400, 'Could not retrieve uploaded ZIP file from storage');
+    }
+
+    let zip;
+    try {
+      zip = new AdmZip(zipBuffer);
+    } catch (zipErr) {
+      return sendError(res, 400, `Invalid or corrupted ZIP archive: ${zipErr.message}`);
+    }
+
+    const zipEntries = zip.getEntries();
+    const allowedExtensions = ['.mp3', '.wav', '.m4a', '.ogg'];
+    const audioEntries = zipEntries.filter(entry => {
+      if (entry.isDirectory) return false;
+      const ext = path.extname(entry.entryName).toLowerCase();
+      return allowedExtensions.includes(ext);
+    });
+
+    if (audioEntries.length === 0) {
+      await storageService.deleteFile(fileKey).catch(console.error);
+      return sendError(res, 400, 'No supported audio files (.mp3, .wav, .m4a, .ogg) found in the ZIP archive');
+    }
+
+    audioEntries.sort((a, b) => a.entryName.localeCompare(b.entryName));
+
+    const settingResult = await query(`SELECT value FROM ai_settings WHERE key = 'pitch_threshold_seconds'`);
+    const pitchThreshold = parseInt(settingResult.rows[0]?.value || '10');
+
+    const mm = await import('music-metadata');
+    const uploadLimit = pLimit(8);
+
+    const uploadPromises = audioEntries.map(entry => uploadLimit(async () => {
+      try {
+        const buffer = entry.getData();
+        const filename = path.basename(entry.entryName);
+        const ext = path.extname(entry.entryName).toLowerCase();
+        
+        let mimetype = 'audio/mpeg';
+        if (ext === '.wav') mimetype = 'audio/wav';
+        else if (ext === '.m4a') mimetype = 'audio/x-m4a';
+        else if (ext === '.ogg') mimetype = 'audio/ogg';
+
+        const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
+
+        const dupCheck = await query(`SELECT c.id FROM calls c WHERE c.file_hash = $1`, [fileHash]);
+        let isDuplicate = false;
+        let duplicateOfId = null;
+        if (dupCheck.rows.length > 0) {
+          isDuplicate = true;
+          duplicateOfId = dupCheck.rows[0].id;
+        }
+
+        let durationSeconds = 0;
+        try {
+          const metadata = await mm.parseBuffer(buffer, { mimeType: mimetype });
+          durationSeconds = Math.round(metadata.format.duration || 0);
+        } catch (err) {
+          console.warn(`[Zip Direct] Could not parse duration for ${filename}: ${err.message}`);
+        }
+
+        const destFileKey = storageService.buildKey(req.user.id, business_id, filename);
+        const fileUrl = await storageService.uploadFile(destFileKey, buffer, mimetype);
+
+        const result = await query(
+          `INSERT INTO calls (title, business_id, user_id, file_name, file_url, file_key, file_size, file_hash, mime_type, status, is_duplicate, duplicate_of, call_date, duration_seconds, audio_language, transcription_lang)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'uploaded', $10, $11, NOW(), $12, $13, $14)
+           RETURNING *`,
+          [
+            filename.replace(/\.[^.]+$/, ''),
+            business_id || null,
+            req.user.id,
+            filename,
+            fileUrl,
+            destFileKey,
+            buffer.length,
+            fileHash,
+            mimetype,
+            isDuplicate,
+            duplicateOfId,
+            durationSeconds,
+            audio_language || 'auto',
+            transcription_lang || 'en',
+          ]
+        );
+
+        const call = result.rows[0];
+
+        if (business_id) {
+          await query(
+            `INSERT INTO activities (business_id, call_id, user_id, type, title)
+             VALUES ($1, $2, $3, 'call_uploaded', 'Call recording uploaded')`,
+            [business_id, call.id, req.user.id]
+          );
+        }
+
+        return call;
+      } catch (fileErr) {
+        console.error(`[Zip Direct] Error processing zip entry ${entry.entryName}:`, fileErr);
+        return null;
+      }
+    }));
+
+    const results = await Promise.all(uploadPromises);
+    const createdCalls = results.filter(Boolean);
+
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) {
+      console.log(`[Zip Direct Batch] Serverless environment detected. Awaiting batch transcriptions in parallel...`);
+      await Promise.all(createdCalls.map(call => {
+        const webhookUrl = getWebhookUrl(req, call.id);
+        return transcribeCall(call.id, call.file_key, pitchThreshold, webhookUrl).catch(console.error);
+      }));
+    } else {
+      (async () => {
+        await Promise.all(createdCalls.map(call => {
+          const webhookUrl = getWebhookUrl(req, call.id);
+          return queueTranscription(call.id, call.file_key, pitchThreshold, webhookUrl);
+        }));
+      })().catch(console.error);
+    }
+
+    await storageService.deleteFile(fileKey).catch(console.error);
+
+    sendSuccess(res, {
+      count: createdCalls.length,
+      calls: createdCalls.map(c => ({ id: c.id, title: c.title, is_duplicate: c.is_duplicate })),
+    }, `${createdCalls.length} calls successfully extracted and batch queued.`, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getCalls, getCallById, uploadCall, updateCall, deleteCall,
   getCallTranscript, getCallSummary, getCallNotes, addCallNote,
   reprocessCall, getSignedUrl, uploadCallZip, getCallFolders,
   handleAssemblyAIWebhook,
+  getPresignedUploadUrlController,
+  uploadCallDirect,
+  uploadCallZipDirect,
 };
