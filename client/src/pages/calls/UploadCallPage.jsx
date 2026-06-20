@@ -32,14 +32,17 @@ const UploadCallPage = () => {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
       'audio/*': ['.mp3', '.wav', '.m4a', '.ogg'],
-      'application/zip': ['.zip'],
-      'application/x-zip-compressed': ['.zip']
+      'application/zip': ['.zip', '.ZIP'],
+      'application/x-zip-compressed': ['.zip', '.ZIP'],
+      'application/octet-stream': ['.zip', '.ZIP'],
+      'application/x-zip': ['.zip', '.ZIP'],
+      'application/compressed': ['.zip', '.ZIP']
     },
     maxFiles: 1,
     onDrop: ([f]) => {
       if (f) {
         setFile(f)
-        const isZip = f.name.endsWith('.zip') || f.type === 'application/zip' || f.type === 'application/x-zip-compressed';
+        const isZip = f.name.toLowerCase().endsWith('.zip') || f.type === 'application/zip' || f.type === 'application/x-zip-compressed';
         if (!isZip && !form.title) {
           setForm((p) => ({ ...p, title: f.name.replace(/\.[^.]+$/, '') }))
         }
@@ -52,7 +55,7 @@ const UploadCallPage = () => {
     setUploading(true)
     setProgress(0)
     try {
-      const isZip = file.name.endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
+      const isZip = file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
       const fd = new FormData()
       
       fd.append('audio_language', form.audio_language)
@@ -156,7 +159,7 @@ const UploadCallPage = () => {
 
   return (
     <div className="max-w-2xl mx-auto fade-in">
-      <PageHeader title="Upload Recording" description="Upload an audio recording to transcribe and analyze with AI" />
+      <PageHeader title="Upload Recording" description="Upload an audio recording or a ZIP archive containing multiple recordings to transcribe and analyze with AI" />
 
       <Card className="p-6 space-y-5">
         {/* Drop zone */}
@@ -189,13 +192,13 @@ const UploadCallPage = () => {
               <p className="font-medium text-slate-700">
                 {isDragActive ? 'Drop your file here' : 'Drag & drop or click to upload'}
               </p>
-              <p className="text-sm text-slate-400 mt-1">Supports MP3, WAV, M4A, OGG · Max 100MB</p>
+              <p className="text-sm text-slate-400 mt-1">Supports MP3, WAV, M4A, OGG, or ZIP (batch) · Max 100MB</p>
             </div>
           )}
         </div>
 
         {/* Form fields */}
-        {file && (file.name.endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed') ? (
+        {file && (file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed') ? (
           <div className="p-4 bg-brand-50 border border-brand-100 rounded-xl flex items-start gap-2.5 text-left">
             <AlertCircle size={18} className="text-brand-600 shrink-0 mt-0.5" />
             <div>

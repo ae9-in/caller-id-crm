@@ -19,8 +19,16 @@ const upload = multer({
 });
 
 const zipFileFilter = (req, file, cb) => {
-  const allowedTypes = ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'];
-  if (allowedTypes.includes(file.mimetype) || file.originalname.endsWith('.zip')) {
+  const allowedTypes = [
+    'application/zip',
+    'application/x-zip-compressed',
+    'application/octet-stream',
+    'application/x-zip',
+    'application/zip-compressed',
+    'application/x-compress',
+    'application/x-compressed'
+  ];
+  if (allowedTypes.includes(file.mimetype) || file.originalname.toLowerCase().endsWith('.zip')) {
     cb(null, true);
   } else {
     cb(new Error('Invalid file type. Only .zip files are allowed for batch upload.'), false);
