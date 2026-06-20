@@ -715,7 +715,18 @@ const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioL
  * Returns a mock transcript if OpenAI not configured or fails
  */
 const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transcriptionLang = 'en', webhookUrl = null) => {
-  // 1️⃣ Try OpenAI Whisper first
+  // 1️⃣ Try AssemblyAI first (if key configured)
+  const assemblyKey = process.env.ASSEMBLYAI_API_KEY;
+  if (assemblyKey && !assemblyKey.includes('your_') && assemblyKey !== '') {
+    try {
+      logger.info('[AI] Attempting AssemblyAI transcription first...');
+      return await transcribeAudioWithAssemblyAI(fileBuffer, assemblyKey, fileKey, audioLanguage, transcriptionLang, webhookUrl);
+    } catch (err) {
+      logger.warn(`[AI] AssemblyAI transcription failed: ${err.message}. Attempting OpenAI Whisper fallback.`);
+    }
+  }
+
+  // 2️⃣ Try OpenAI Whisper as fallback
   try {
     const client = getOpenAIClient();
     if (client) {
@@ -765,21 +776,11 @@ const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transc
       }
     }
   } catch (err) {
-    logger.warn(`[AI] OpenAI Whisper failed: ${err.message}. Attempting AssemblyAI fallback.`);
-  }
-
-  // 2️⃣ AssemblyAI fallback (if key configured)
-  const assemblyKey = process.env.ASSEMBLYAI_API_KEY;
-  if (assemblyKey && !assemblyKey.includes('your_') && assemblyKey !== '') {
-    try {
-      return await transcribeAudioWithAssemblyAI(fileBuffer, assemblyKey, fileKey, audioLanguage, transcriptionLang, webhookUrl);
-    } catch (err) {
-      logger.warn(`[AI] AssemblyAI transcription failed: ${err.message}.`);
-    }
+    logger.warn(`[AI] OpenAI Whisper failed: ${err.message}.`);
   }
 
   // 3️⃣ Final fallback to mock data
-  logger.warn('[AI] Both OpenAI and AssemblyAI failed or not configured. Using mock transcript.');
+  logger.warn('[AI] Both AssemblyAI and OpenAI failed or not configured. Using mock transcript.');
   return getMockTranscript(fileKey, audioLanguage, transcriptionLang);
 };
 
