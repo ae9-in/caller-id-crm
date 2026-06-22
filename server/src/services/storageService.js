@@ -261,6 +261,7 @@ const getFileBuffer = async (key, fileUrl) => {
       return Buffer.from(response.data);
     } catch (err) {
       console.error('[Storage] Download from URL failed:', err.message);
+      throw new Error(`Download from URL failed: ${err.message} (URL: ${fileUrl})`);
     }
   }
 

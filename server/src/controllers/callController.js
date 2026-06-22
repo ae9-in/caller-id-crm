@@ -364,13 +364,22 @@ const AdmZip = require('adm-zip');
         // Compute MD5 hash for duplicate detection
         const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
 
-        // Check for duplicate
-        const dupCheck = await query(`SELECT c.id FROM calls c WHERE c.file_hash = $1`, [fileHash]);
+        // Check for duplicate and reuse existing file details to avoid redundant uploads
+        const dupCheck = await query(`SELECT c.id, c.file_url, c.file_key FROM calls c WHERE c.file_hash = $1 LIMIT 1`, [fileHash]);
         let isDuplicate = false;
         let duplicateOfId = null;
+        let fileUrl = '';
+        let fileKey = '';
         if (dupCheck.rows.length > 0) {
           isDuplicate = true;
           duplicateOfId = dupCheck.rows[0].id;
+          fileUrl = dupCheck.rows[0].file_url;
+          fileKey = dupCheck.rows[0].file_key;
+          console.log(`[Zip Upload] Skipping upload/processing for duplicate file: ${filename}`);
+        } else {
+          // Upload to storage
+          fileKey = storageService.buildKey(req.user.id, business_id, filename);
+          fileUrl = await storageService.uploadFile(fileKey, buffer, mimetype);
         }
 
         // Parse duration locally using music-metadata
@@ -381,10 +390,6 @@ const AdmZip = require('adm-zip');
         } catch (err) {
           console.warn(`[Zip Upload] Could not parse duration for ${filename}: ${err.message}`);
         }
-
-        // Upload to storage
-        const fileKey = storageService.buildKey(req.user.id, business_id, filename);
-        const fileUrl = await storageService.uploadFile(fileKey, buffer, mimetype);
 
         // Insert call record
         const result = await query(
@@ -594,6 +599,19 @@ const getPresignedUploadUrlController = async (req, res, next) => {
       return sendError(res, 400, 'fileName is required');
     }
 
+    const isZip = fileName.toLowerCase().endsWith('.zip') || 
+                  (fileType && (
+                    fileType === 'application/zip' || 
+                    fileType === 'application/x-zip-compressed' || 
+                    fileType === 'application/x-zip' || 
+                    fileType === 'application/zip-compressed'
+                  ));
+
+    // Disable direct upload for ZIP files to bypass Cloudinary's raw access restriction and keep things efficient
+    if (isZip) {
+      return sendSuccess(res, { directUpload: false });
+    }
+
     if (storageService.hasStorageConfig()) {
       const fileKey = storageService.buildKey(req.user.id, business_id, fileName);
       const uploadData = await storageService.getPresignedUploadUrl(fileKey, fileType || 'application/octet-stream');
@@ -779,12 +797,22 @@ const uploadCallZipDirect = async (req, res, next) => {
 
         const fileHash = crypto.createHash('md5').update(buffer).digest('hex');
 
-        const dupCheck = await query(`SELECT c.id FROM calls c WHERE c.file_hash = $1`, [fileHash]);
+        // Check for duplicate and reuse existing file details to avoid redundant uploads
+        const dupCheck = await query(`SELECT c.id, c.file_url, c.file_key FROM calls c WHERE c.file_hash = $1 LIMIT 1`, [fileHash]);
         let isDuplicate = false;
         let duplicateOfId = null;
+        let fileUrl = '';
+        let destFileKey = '';
         if (dupCheck.rows.length > 0) {
           isDuplicate = true;
           duplicateOfId = dupCheck.rows[0].id;
+          fileUrl = dupCheck.rows[0].file_url;
+          destFileKey = dupCheck.rows[0].file_key;
+          console.log(`[Zip Direct] Skipping upload/processing for duplicate file: ${filename}`);
+        } else {
+          // Upload to storage
+          destFileKey = storageService.buildKey(req.user.id, business_id, filename);
+          fileUrl = await storageService.uploadFile(destFileKey, buffer, mimetype);
         }
 
         let durationSeconds = 0;
@@ -794,9 +822,6 @@ const uploadCallZipDirect = async (req, res, next) => {
         } catch (err) {
           console.warn(`[Zip Direct] Could not parse duration for ${filename}: ${err.message}`);
         }
-
-        const destFileKey = storageService.buildKey(req.user.id, business_id, filename);
-        const fileUrl = await storageService.uploadFile(destFileKey, buffer, mimetype);
 
         const result = await query(
           `INSERT INTO calls (title, business_id, user_id, file_name, file_url, file_key, file_size, file_hash, mime_type, status, is_duplicate, duplicate_of, call_date, duration_seconds, audio_language, transcription_lang)
