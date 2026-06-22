@@ -61,10 +61,11 @@ const UploadCallPage = () => {
       let directUpload = false;
       let uploadUrl = null;
       let fileKey = null;
+      let presignedRes = null;
 
       try {
         // Request presigned URL
-        const presignedRes = await callService.getPresignedUpload({
+        presignedRes = await callService.getPresignedUpload({
           fileName: file.name,
           fileType: file.type || 'application/octet-stream',
           business_id: form.business_id || undefined,
