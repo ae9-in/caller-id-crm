@@ -140,7 +140,13 @@ const deleteFile = async (key) => {
     if (!hasCloudinaryConfig()) return;
     try {
       const isRaw = key.toLowerCase().endsWith('.zip');
-      const publicId = key.replace(/\.[^.]+$/, '');
+      let publicId = key;
+      if (!publicId.startsWith('call_recordings/')) {
+        publicId = `call_recordings/${publicId}`;
+      }
+      if (!isRaw) {
+        publicId = publicId.replace(/\.[^.]+$/, '');
+      }
       await cloudinary.uploader.destroy(publicId, { resource_type: isRaw ? 'raw' : 'video' });
       console.log(`[Storage] Deleted Cloudinary asset: ${publicId}`);
     } catch (error) {
@@ -178,7 +184,14 @@ const getSignedDownloadUrl = async (key, expiresIn = 3600) => {
       return IS_PRODUCTION ? null : `/uploads/${key}`;
     }
     const isRaw = key.toLowerCase().endsWith('.zip');
-    return cloudinary.url(key, { secure: true, resource_type: isRaw ? 'raw' : 'video' });
+    let publicId = key;
+    if (!publicId.startsWith('call_recordings/')) {
+      publicId = `call_recordings/${publicId}`;
+    }
+    if (!isRaw) {
+      publicId = publicId.replace(/\.[^.]+$/, '');
+    }
+    return cloudinary.url(publicId, { secure: true, resource_type: isRaw ? 'raw' : 'video' });
   }
 
   if (!hasS3Config()) {
