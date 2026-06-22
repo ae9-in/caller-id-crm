@@ -19,16 +19,14 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10, webhookUrl =
     await query(`UPDATE calls SET status = 'processing' WHERE id = $1`, [callId]);
 
     // Fetch audio from cloud storage (no local disk on Vercel) or local filesystem (development)
-    let fileBuffer = null;
+    let fileUrlOrBuffer = null;
     if (fileKey) {
       try {
         const signedUrl = await storageService.getSignedUrl(fileKey);
         if (signedUrl) {
           if (signedUrl.startsWith('http')) {
-            // Use native fetch (Node 18+) — no node-fetch needed
-            const response = await fetch(signedUrl);
-            if (!response.ok) throw new Error(`Storage fetch failed: ${response.status}`);
-            fileBuffer = Buffer.from(await response.arrayBuffer());
+            // Pass cloud URL directly to transcription service
+            fileUrlOrBuffer = signedUrl;
           } else {
             // Local file fallback (development)
             const fs = require('fs');
@@ -47,13 +45,13 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10, webhookUrl =
             
             if (fs.existsSync(localPath)) {
               logger.info(`[Job] Reading local file: ${localPath}`);
-              fileBuffer = fs.readFileSync(localPath);
+              fileUrlOrBuffer = fs.readFileSync(localPath);
             } else {
               // try direct key in uploads dir
               const directPath = path.join(__dirname, '../../uploads', fileKey);
               if (fs.existsSync(directPath)) {
                 logger.info(`[Job] Reading local file (direct key): ${directPath}`);
-                fileBuffer = fs.readFileSync(directPath);
+                fileUrlOrBuffer = fs.readFileSync(directPath);
               } else {
                 throw new Error(`Local file not found at ${localPath} or ${directPath}`);
               }
@@ -80,8 +78,8 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10, webhookUrl =
 
     // Transcribe
     let transcriptData = null;
-    if (fileBuffer) {
-      transcriptData = await transcribeAudio(fileKey, fileBuffer, audioLanguage, transcriptionLang, webhookUrl);
+    if (fileUrlOrBuffer) {
+      transcriptData = await transcribeAudio(fileKey, fileUrlOrBuffer, audioLanguage, transcriptionLang, webhookUrl);
     } else {
       logger.error(`[Job] No audio file available for call ${callId}. Cannot transcribe.`);
       await query(`UPDATE calls SET status = 'failed' WHERE id = $1`, [callId]);

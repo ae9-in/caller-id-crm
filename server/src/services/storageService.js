@@ -257,7 +257,7 @@ const getFileBuffer = async (key, fileUrl) => {
   if (fileUrl) {
     try {
       const axios = require('axios');
-      const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+      const response = await axios.get(fileUrl, { responseType: 'arraybuffer', timeout: 60000 });
       return Buffer.from(response.data);
     } catch (err) {
       console.error('[Storage] Download from URL failed:', err.message);

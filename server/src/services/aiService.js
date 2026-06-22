@@ -615,29 +615,35 @@ const getAssemblyAITranscript = async (transcriptId) => {
   }
 };
 
-const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioLanguage = 'en', transcriptionLang = 'en', webhookUrl = null) => {
+const transcribeAudioWithAssemblyAI = async (fileBufferOrUrl, apiKey, fileKey, audioLanguage = 'en', transcriptionLang = 'en', webhookUrl = null) => {
   try {
     logger.info('[AI] Starting AssemblyAI transcription pipeline...');
     
-    // 1. Upload to AssemblyAI
-    logger.info('[AI] Uploading file buffer to AssemblyAI...');
-    const uploadRes = await fetch('https://api.assemblyai.com/v2/upload', {
-      method: 'POST',
-      headers: {
-        'authorization': apiKey,
-        'content-type': 'application/octet-stream'
-      },
-      body: fileBuffer
-    });
+    let audioUrl;
+    if (typeof fileBufferOrUrl === 'string' && fileBufferOrUrl.startsWith('http')) {
+      audioUrl = fileBufferOrUrl;
+      logger.info(`[AI] Using existing public cloud storage URL directly: ${audioUrl}`);
+    } else {
+      // 1. Upload to AssemblyAI
+      logger.info('[AI] Uploading file buffer to AssemblyAI...');
+      const uploadRes = await fetch('https://api.assemblyai.com/v2/upload', {
+        method: 'POST',
+        headers: {
+          'authorization': apiKey,
+          'content-type': 'application/octet-stream'
+        },
+        body: fileBufferOrUrl
+      });
 
-    if (!uploadRes.ok) {
-      const errText = await uploadRes.text();
-      throw new Error(`AssemblyAI upload HTTP ${uploadRes.status}: ${errText}`);
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        throw new Error(`AssemblyAI upload HTTP ${uploadRes.status}: ${errText}`);
+      }
+
+      const uploadData = await uploadRes.json();
+      audioUrl = uploadData.upload_url;
+      logger.info(`[AI] Uploaded successfully. Audio URL: ${audioUrl}`);
     }
-
-    const uploadData = await uploadRes.json();
-    const audioUrl = uploadData.upload_url;
-    logger.info(`[AI] Uploaded successfully. Audio URL: ${audioUrl}`);
 
     // 2. Start transcription
     logger.info('[AI] Initiating AssemblyAI transcription with speaker labels...');
@@ -714,13 +720,13 @@ const transcribeAudioWithAssemblyAI = async (fileBuffer, apiKey, fileKey, audioL
  * Transcribe audio using OpenAI Whisper (or AssemblyAI if config present)
  * Returns a mock transcript if OpenAI not configured or fails
  */
-const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transcriptionLang = 'en', webhookUrl = null) => {
+const transcribeAudio = async (fileKey, fileBufferOrUrl, audioLanguage = 'en', transcriptionLang = 'en', webhookUrl = null) => {
   // 1️⃣ Try AssemblyAI first (if key configured)
   const assemblyKey = process.env.ASSEMBLYAI_API_KEY;
   if (assemblyKey && !assemblyKey.includes('your_') && assemblyKey !== '') {
     try {
       logger.info('[AI] Attempting AssemblyAI transcription first...');
-      return await transcribeAudioWithAssemblyAI(fileBuffer, assemblyKey, fileKey, audioLanguage, transcriptionLang, webhookUrl);
+      return await transcribeAudioWithAssemblyAI(fileBufferOrUrl, assemblyKey, fileKey, audioLanguage, transcriptionLang, webhookUrl);
     } catch (err) {
       logger.warn(`[AI] AssemblyAI transcription failed: ${err.message}. Attempting OpenAI Whisper fallback.`);
     }
@@ -730,8 +736,17 @@ const transcribeAudio = async (fileKey, fileBuffer, audioLanguage = 'en', transc
   try {
     const client = getOpenAIClient();
     if (client) {
+      // Lazy download the file to a buffer if a URL was passed
+      let buffer = fileBufferOrUrl;
+      if (typeof fileBufferOrUrl === 'string' && fileBufferOrUrl.startsWith('http')) {
+        logger.info(`[AI] Downloading audio from ${fileBufferOrUrl} for OpenAI Whisper fallback...`);
+        const axios = require('axios');
+        const response = await axios.get(fileBufferOrUrl, { responseType: 'arraybuffer', timeout: 60000 });
+        buffer = Buffer.from(response.data);
+      }
+
       const { toFile } = require('openai');
-      const file = await toFile(fileBuffer, 'audio.mp3', { type: 'audio/mpeg' });
+      const file = await toFile(buffer, 'audio.mp3', { type: 'audio/mpeg' });
 
       // If transcription target is English and audio language is regional, use translations endpoint
       if (transcriptionLang === 'en' && audioLanguage !== 'en' && audioLanguage !== 'auto') {

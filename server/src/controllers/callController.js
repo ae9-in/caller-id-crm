@@ -159,9 +159,9 @@ const uploadCall = async (req, res, next) => {
     }
 
     // Queue AI transcription
-    const isProd = process.env.NODE_ENV === 'production';
+    const isServerless = process.env.VERCEL === '1' || process.env.SERVERLESS === 'true';
     const webhookUrl = getWebhookUrl(req, call.id);
-    if (isProd) {
+    if (isServerless) {
       console.log(`[Upload] Serverless environment detected. Awaiting transcription for call ${call.id}...`);
       await transcribeCall(call.id, fileKey, pitchThreshold, webhookUrl).catch(console.error);
     } else {
@@ -280,9 +280,9 @@ const reprocessCall = async (req, res, next) => {
 
     await query(`UPDATE calls SET status = 'uploaded' WHERE id = $1`, [req.params.id]);
 
-    const isProd = process.env.NODE_ENV === 'production';
+    const isServerless = process.env.VERCEL === '1' || process.env.SERVERLESS === 'true';
     const webhookUrl = getWebhookUrl(req, req.params.id);
-    if (isProd) {
+    if (isServerless) {
       console.log(`[Reprocess] Serverless environment detected. Awaiting transcription for call ${req.params.id}...`);
       await transcribeCall(req.params.id, result.rows[0].file_key, 10, webhookUrl).catch(console.error);
       sendSuccess(res, null, 'Reprocessing completed');
@@ -431,8 +431,8 @@ const AdmZip = require('adm-zip');
     const createdCalls = results.filter(Boolean);
 
     // Process transcription queue
-    const isProd = process.env.NODE_ENV === 'production';
-    if (isProd) {
+    const isServerless = process.env.VERCEL === '1' || process.env.SERVERLESS === 'true';
+    if (isServerless) {
       console.log(`[Batch Job] Serverless environment detected. Awaiting batch transcriptions in parallel...`);
       await Promise.all(createdCalls.map(call => {
         const webhookUrl = getWebhookUrl(req, call.id);
@@ -693,9 +693,9 @@ const uploadCallDirect = async (req, res, next) => {
       );
     }
 
-    const isProd = process.env.NODE_ENV === 'production';
+    const isServerless = process.env.VERCEL === '1' || process.env.SERVERLESS === 'true';
     const webhookUrl = getWebhookUrl(req, call.id);
-    if (isProd) {
+    if (isServerless) {
       console.log(`[Upload Direct] Serverless environment detected. Awaiting transcription for call ${call.id}...`);
       await transcribeCall(call.id, fileKey, pitchThreshold, webhookUrl).catch(console.error);
     } else {
@@ -840,8 +840,8 @@ const uploadCallZipDirect = async (req, res, next) => {
     const results = await Promise.all(uploadPromises);
     const createdCalls = results.filter(Boolean);
 
-    const isProd = process.env.NODE_ENV === 'production';
-    if (isProd) {
+    const isServerless = process.env.VERCEL === '1' || process.env.SERVERLESS === 'true';
+    if (isServerless) {
       console.log(`[Zip Direct Batch] Serverless environment detected. Awaiting batch transcriptions in parallel...`);
       await Promise.all(createdCalls.map(call => {
         const webhookUrl = getWebhookUrl(req, call.id);
