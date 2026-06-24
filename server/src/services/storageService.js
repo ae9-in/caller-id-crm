@@ -7,6 +7,13 @@ const cloudinary = require('cloudinary').v2;
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
+const stripExtension = (key) => {
+  if (!key) return key;
+  // Only strip known media and zip extensions to avoid corrupting public IDs that contain other dots (e.g. times like 4.12.07 PM)
+  const extRegex = /\.(mp3|wav|m4a|mp4|wma|aac|webm|ogg|flac|avi|mov|mkv|zip)$/i;
+  return key.replace(extRegex, '');
+};
+
 const hasCloudinaryConfig = () => {
   return !!(
     process.env.CLOUDINARY_CLOUD_NAME &&
@@ -73,7 +80,7 @@ const uploadFile = async (key, buffer, contentType) => {
         const uploadStream = cloudinary.uploader.upload_stream(
           {
             folder: 'call_recordings',
-            public_id: key.replace(/\.[^.]+$/, ''),
+            public_id: stripExtension(key),
             resource_type: 'auto',
           },
           (error, result) => {
@@ -144,9 +151,7 @@ const deleteFile = async (key) => {
       if (!publicId.startsWith('call_recordings/')) {
         publicId = `call_recordings/${publicId}`;
       }
-      if (!isRaw) {
-        publicId = publicId.replace(/\.[^.]+$/, '');
-      }
+      publicId = stripExtension(publicId);
       await cloudinary.uploader.destroy(publicId, { resource_type: isRaw ? 'raw' : 'video' });
       console.log(`[Storage] Deleted Cloudinary asset: ${publicId}`);
     } catch (error) {
@@ -188,9 +193,7 @@ const getSignedDownloadUrl = async (key, expiresIn = 3600) => {
     if (!publicId.startsWith('call_recordings/')) {
       publicId = `call_recordings/${publicId}`;
     }
-    if (!isRaw) {
-      publicId = publicId.replace(/\.[^.]+$/, '');
-    }
+    publicId = stripExtension(publicId);
     return cloudinary.url(publicId, { secure: true, resource_type: isRaw ? 'raw' : 'video' });
   }
 
@@ -214,7 +217,7 @@ const getPresignedUploadUrl = async (key, contentType, expiresIn = 3600) => {
       const timestamp = Math.round(new Date().getTime() / 1000);
       const isRaw = key.toLowerCase().endsWith('.zip') || contentType === 'application/zip';
       const folder = 'call_recordings';
-      const publicId = key.replace(/\.[^.]+$/, '');
+      const publicId = stripExtension(key);
       
       const paramsToSign = {
         timestamp,
