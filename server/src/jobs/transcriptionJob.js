@@ -167,7 +167,7 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10, webhookUrl =
     }
     const fileSize = callResult.rows[0]?.file_size || 0;
     const audioLanguage = callResult.rows[0]?.audio_language || 'auto';
-    const transcriptionLang = callResult.rows[0]?.transcription_lang || 'en';
+    const transcriptionLang = 'en'; // Force English words transcription
     const businessId = callResult.rows[0]?.business_id;
 
     // Transcribe
@@ -198,6 +198,19 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10, webhookUrl =
 
 const completeTranscriptionProcessing = async (callId, transcriptData, businessId, fileSize, pitchThreshold = 10) => {
   logger.info(`[Job] Completing transcription processing for call ${callId}`);
+
+  // Translate regional languages to English (always translate to English as requested)
+  try {
+    const detectedLang = (transcriptData.language || '').toLowerCase();
+    const isRegional = detectedLang && detectedLang !== 'en' && !detectedLang.startsWith('en-') && !detectedLang.startsWith('en_');
+    
+    if (isRegional) {
+      const { translateTranscriptToEnglish } = require('../services/aiService');
+      transcriptData = await translateTranscriptToEnglish(transcriptData);
+    }
+  } catch (translationErr) {
+    logger.error(`[Job] Failed to translate transcript to English for call ${callId}: ${translationErr.message}`);
+  }
 
   let duration = 0;
   if (transcriptData.duration) {

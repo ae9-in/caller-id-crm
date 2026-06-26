@@ -143,7 +143,7 @@ const uploadCall = async (req, res, next) => {
         call_date || new Date(),
         durationSeconds,
         audio_language || 'auto',
-        transcription_lang || 'en',
+        'en',
       ]
     );
 
@@ -410,7 +410,7 @@ const AdmZip = require('adm-zip');
             duplicateOfId,
             durationSeconds,
             audio_language || 'auto',
-            transcription_lang || 'en',
+            'en',
           ]
         );
 
@@ -697,7 +697,7 @@ const uploadCallDirect = async (req, res, next) => {
         call_date || new Date(),
         durationSeconds,
         audio_language || 'auto',
-        transcription_lang || 'en',
+        'en',
       ]
     );
 
@@ -841,7 +841,7 @@ const uploadCallZipDirect = async (req, res, next) => {
             duplicateOfId,
             durationSeconds,
             audio_language || 'auto',
-            transcription_lang || 'en',
+            'en',
           ]
         );
 

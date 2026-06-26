@@ -972,4 +972,64 @@ const analyzeSpeakers = (segments, totalDuration) => {
   };
 };
 
-module.exports = { transcribeAudio, generateSummary, analyzeSpeakers, getAssemblyAITranscript, getMockTranscript };
+const translateTranscriptToEnglish = async (transcriptData) => {
+  try {
+    const client = getOpenAIClient();
+    if (!client) {
+      logger.warn('[AI] OpenAI client not configured. Skipping translation.');
+      return transcriptData;
+    }
+
+    const segments = transcriptData.segments;
+    if (!segments || segments.length === 0) {
+      return transcriptData;
+    }
+
+    logger.info(`[AI] Translating transcript segments from ${transcriptData.language || 'regional'} to English using OpenAI...`);
+
+    const payload = segments.map((seg, idx) => ({
+      index: idx,
+      speaker: seg.speaker || 'Unknown',
+      text: seg.text
+    }));
+
+    const prompt = `You are a professional translator. Translate the following speaker segments from their original language into natural, professional English. Keep any English words as they are.
+Respond with ONLY valid JSON in this exact format:
+{
+  "translated_segments": [
+    { "index": 0, "text": "Translated English text here" },
+    ...
+  ]
+}
+
+Segments:
+${JSON.stringify(payload, null, 2)}`;
+
+    const response = await client.chat.completions.create({
+      model: process.env.GPT_MODEL || 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    }, { timeout: 90000, maxRetries: 3 });
+
+    const result = JSON.parse(response.choices[0].message.content);
+    if (result && Array.isArray(result.translated_segments)) {
+      result.translated_segments.forEach(ts => {
+        if (segments[ts.index]) {
+          segments[ts.index].text = ts.text;
+        }
+      });
+    }
+
+    transcriptData.text = segments.map(s => s.text).join(' ');
+    transcriptData.language = 'en';
+
+    logger.info('[AI] Transcript segments successfully translated to English.');
+    return transcriptData;
+  } catch (err) {
+    logger.error(`[AI] Transcript translation failed: ${err.message}`);
+    return transcriptData;
+  }
+};
+
+module.exports = { transcribeAudio, generateSummary, analyzeSpeakers, getAssemblyAITranscript, getMockTranscript, translateTranscriptToEnglish };

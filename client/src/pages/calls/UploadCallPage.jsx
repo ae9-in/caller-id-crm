@@ -534,17 +534,11 @@ const UploadCallPage = () => {
             onChange={(e) => setForm({ ...form, audio_language: e.target.value })}
           />
 
-          <Select
+          <Input
             label="Transcription Language"
-            options={[
-              { value: 'en', label: 'English' },
-              { value: 'hi', label: 'Hindi (हिंदी)' },
-              { value: 'ta', label: 'Tamil (தமிழ்)' },
-              { value: 'te', label: 'Telugu (తెలుగు)' },
-              { value: 'kn', label: 'Kannada (ಕನ್ನಡ)' },
-            ]}
-            value={form.transcription_lang}
-            onChange={(e) => setForm({ ...form, transcription_lang: e.target.value })}
+            value="English (Only)"
+            disabled={true}
+            readOnly={true}
           />
         </div>
 
