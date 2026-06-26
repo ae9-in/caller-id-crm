@@ -477,7 +477,7 @@ const UploadCallPage = () => {
               <p className="font-medium text-slate-700">
                 {isDragActive ? 'Drop your file here' : 'Drag & drop or click to upload'}
               </p>
-              <p className="text-sm text-slate-400 mt-1">Supports MP3, WAV, M4A, OGG, or ZIP (batch) · Max 100MB</p>
+              <p className="text-sm text-slate-400 mt-1">Supports MP3, WAV, M4A, OGG, or ZIP (batch) · Max 50MB</p>
             </div>
           )}
         </div>

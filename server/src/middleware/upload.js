@@ -58,7 +58,7 @@ const uploadPdf = multer({
 const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return sendError(res, 400, `File too large. Max size: ${process.env.MAX_FILE_SIZE_MB || 100}MB`);
+      return sendError(res, 400, `File too large. Max size: ${process.env.MAX_FILE_SIZE_MB || 50}MB`);
     }
     return sendError(res, 400, err.message);
   }

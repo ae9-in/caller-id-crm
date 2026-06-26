@@ -51,7 +51,7 @@ module.exports = {
   ],
 
   ALLOWED_AUDIO_TYPES: ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/x-m4a', 'audio/ogg'],
-  MAX_FILE_SIZE_BYTES: (parseInt(process.env.MAX_FILE_SIZE_MB) || 100) * 1024 * 1024,
+  MAX_FILE_SIZE_BYTES: (parseInt(process.env.MAX_FILE_SIZE_MB) || 50) * 1024 * 1024,
 
   DEFAULT_PAGE_SIZE: 20,
   MAX_PAGE_SIZE: 100,
