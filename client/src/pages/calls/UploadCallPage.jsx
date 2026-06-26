@@ -58,6 +58,193 @@ const UploadCallPage = () => {
     try {
       const isZip = file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
       
+      if (isZip) {
+        const toastId = toast.loading('Loading ZIP extractor...');
+        let JSZip;
+        try {
+          JSZip = await new Promise((resolve, reject) => {
+            if (window.JSZip) {
+              resolve(window.JSZip);
+              return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+            script.async = true;
+            script.onload = () => resolve(window.JSZip);
+            script.onerror = () => reject(new Error('Failed to load JSZip from CDN'));
+            document.body.appendChild(script);
+          });
+        } catch (err) {
+          toast.error('Failed to load ZIP extraction library', { id: toastId });
+          setUploading(false);
+          return;
+        }
+
+        toast.loading('Extracting files from ZIP...', { id: toastId });
+        let zip;
+        try {
+          zip = await JSZip.loadAsync(file);
+        } catch (err) {
+          toast.error(`Invalid or corrupted ZIP file: ${err.message}`, { id: toastId });
+          setUploading(false);
+          return;
+        }
+
+        const allowedExtensions = ['.mp3', '.wav', '.m4a', '.ogg'];
+        const audioEntries = [];
+
+        zip.forEach((relativePath, zipEntry) => {
+          if (!zipEntry.dir) {
+            const ext = relativePath.substring(relativePath.lastIndexOf('.')).toLowerCase();
+            if (allowedExtensions.includes(ext)) {
+              audioEntries.push(zipEntry);
+            }
+          }
+        });
+
+        if (audioEntries.length === 0) {
+          toast.error('No supported audio files (.mp3, .wav, .m4a, .ogg) found in the ZIP archive', { id: toastId });
+          setUploading(false);
+          return;
+        }
+
+        // Sort alphabetically
+        audioEntries.sort((a, b) => a.name.localeCompare(b.name));
+
+        toast.loading(`Found ${audioEntries.length} audio files. Preparing to upload...`, { id: toastId });
+
+        const uploadedCalls = [];
+        let successCount = 0;
+
+        for (let idx = 0; idx < audioEntries.length; idx++) {
+          const entry = audioEntries[idx];
+          const filename = entry.name.split('/').pop();
+          toast.loading(`Uploading file ${idx + 1} of ${audioEntries.length}: ${filename}...`, { id: toastId });
+
+          try {
+            const fileData = await entry.async('blob');
+            const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+            let mimeType = 'audio/mpeg';
+            if (ext === '.wav') mimeType = 'audio/wav';
+            else if (ext === '.m4a') mimeType = 'audio/x-m4a';
+            else if (ext === '.ogg') mimeType = 'audio/ogg';
+
+            const audioFile = new File([fileData], filename, { type: mimeType });
+
+            // 1. Get presigned upload URL for the audio file
+            let directUpload = false;
+            let uploadUrl = null;
+            let fileKey = null;
+            let presignedRes = null;
+
+            try {
+              presignedRes = await callService.getPresignedUpload({
+                fileName: audioFile.name,
+                fileType: audioFile.type || 'application/octet-stream',
+                business_id: form.business_id || undefined,
+              });
+              if (presignedRes.data?.data) {
+                directUpload = presignedRes.data.data.directUpload;
+                uploadUrl = presignedRes.data.data.uploadUrl;
+                fileKey = presignedRes.data.data.fileKey;
+              }
+            } catch (presignedErr) {
+              console.warn(`[Zip Upload] Presigned URL fetch failed for ${filename}:`, presignedErr.message);
+              directUpload = false;
+            }
+
+            let uploadedUrl = '';
+            let uploadedKey = fileKey;
+
+            if (directUpload) {
+              if (presignedRes.data.data.provider === 'cloudinary') {
+                const { fields, uploadUrl: cloudinaryUrl } = presignedRes.data.data;
+                const fd = new FormData();
+                Object.entries(fields).forEach(([k, v]) => {
+                  fd.append(k, v);
+                });
+                fd.append('file', audioFile);
+
+                const cloudinaryRes = await axios.post(cloudinaryUrl, fd, {
+                  headers: { 'Content-Type': 'multipart/form-data' },
+                  onUploadProgress: (e) => {
+                    if (e.total) {
+                      const fileProg = Math.round((e.loaded * 100) / e.total);
+                      setProgress(Math.round(((idx + (fileProg / 100)) * 100) / audioEntries.length));
+                    }
+                  },
+                });
+
+                uploadedUrl = cloudinaryRes.data.secure_url;
+                uploadedKey = cloudinaryRes.data.public_id;
+              } else {
+                // S3 upload
+                await axios.put(uploadUrl, audioFile, {
+                  headers: { 'Content-Type': audioFile.type || 'application/octet-stream' },
+                  onUploadProgress: (e) => {
+                    if (e.total) {
+                      const fileProg = Math.round((e.loaded * 100) / e.total);
+                      setProgress(Math.round(((idx + (fileProg / 100)) * 100) / audioEntries.length));
+                    }
+                  },
+                });
+              }
+
+              // Register the call with the backend
+              const res = await callService.uploadDirect({
+                fileKey: uploadedKey,
+                fileUrl: uploadedUrl || undefined,
+                fileName: audioFile.name,
+                fileSize: audioFile.size,
+                mimeType: audioFile.type,
+                title: filename.replace(/\.[^.]+$/, ''),
+                business_id: form.business_id || undefined,
+                call_date: new Date().toISOString(),
+                audio_language: form.audio_language,
+                transcription_lang: form.transcription_lang,
+              });
+
+              uploadedCalls.push(res.data.data);
+              successCount++;
+            } else {
+              // Fallback multipart upload
+              const fd = new FormData();
+              fd.append('audio_language', form.audio_language);
+              fd.append('transcription_lang', form.transcription_lang);
+              if (form.business_id) fd.append('business_id', form.business_id);
+              fd.append('audio', audioFile);
+              fd.append('title', filename.replace(/\.[^.]+$/, ''));
+              fd.append('call_date', new Date().toISOString());
+
+              const res = await callService.upload(fd, (e) => {
+                if (e.total) {
+                  const fileProg = Math.round((e.loaded * 100) / e.total);
+                  setProgress(Math.round(((idx + (fileProg / 100)) * 100) / audioEntries.length));
+                }
+              });
+
+              uploadedCalls.push(res.data.data);
+              successCount++;
+            }
+          } catch (fileErr) {
+            console.error(`[Zip Upload] Error processing file ${filename}:`, fileErr);
+            toast.error(`Error uploading ${filename}: ${fileErr.message || 'unknown error'}`);
+          }
+        }
+
+        if (successCount > 0) {
+          toast.success(`Successfully uploaded ${successCount} calls!`, { id: toastId });
+          setResult({
+            count: successCount,
+            calls: uploadedCalls
+          });
+        } else {
+          toast.error('Failed to upload any files from the ZIP archive', { id: toastId });
+        }
+        setUploading(false);
+        return;
+      }
+
       let directUpload = false;
       let uploadUrl = null;
       let fileKey = null;
