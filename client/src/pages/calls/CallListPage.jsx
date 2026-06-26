@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Phone, Upload, Filter, Clock, CheckCircle2 } from 'lucide-react'
+import { Phone, Upload, Filter, Clock, CheckCircle2, Link2 } from 'lucide-react'
 import { callService } from '../../services/callService'
+import toast from 'react-hot-toast'
 import { usePaginatedApi, useDebounce } from '../../hooks/index'
 import {
   Button, PageHeader, SearchInput, Select, Badge,
@@ -36,6 +37,26 @@ const CallListPage = () => {
   const [s, ss] = useS('')
 
   const cols = ['call_date', 'duration_seconds', 'status']
+
+  const handleCopyLink = async (call) => {
+    let url = call.file_url;
+    if (url && !url.startsWith('http')) {
+      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5002';
+      url = `${apiBase}${url}`;
+    }
+    
+    if (!url) {
+      toast.error('No audio URL available');
+      return;
+    }
+    
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Audio link copied!');
+    } catch (err) {
+      toast.error('Failed to copy link');
+    }
+  }
 
   return (
     <div className="space-y-5 fade-in">
@@ -161,10 +182,19 @@ const CallListPage = () => {
                       ) : <span className="text-slate-400 text-xs">—</span>}
                     </td>
                     <td className="text-xs text-slate-600">{call.user_name}</td>
-                    <td>
+                    <td className="flex items-center gap-2">
                       <Link to={`/calls/${call.id}`} className="text-xs text-brand-600 hover:underline">
                         View
                       </Link>
+                      <span className="text-slate-300 text-xs">|</span>
+                      <button
+                        onClick={() => handleCopyLink(call)}
+                        className="text-xs text-slate-500 hover:text-brand-600 flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+                        title="Copy Audio Link"
+                      >
+                        <Link2 size={12} />
+                        Copy Link
+                      </button>
                     </td>
                   </tr>
                 ))}
