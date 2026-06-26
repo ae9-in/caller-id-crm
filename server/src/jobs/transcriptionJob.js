@@ -15,6 +15,100 @@ const transcribeCall = async (callId, fileKey, pitchThreshold = 10, webhookUrl =
   try {
     logger.info(`[Job] Starting transcription for call ${callId}`);
 
+    // Check if the call is a duplicate
+    const callDataQuery = await query(`SELECT is_duplicate, duplicate_of, business_id FROM calls WHERE id = $1`, [callId]);
+    if (callDataQuery.rows.length > 0 && callDataQuery.rows[0].is_duplicate && callDataQuery.rows[0].duplicate_of) {
+      const originalCallId = callDataQuery.rows[0].duplicate_of;
+      const businessId = callDataQuery.rows[0].business_id;
+      
+      // Copy transcript
+      const transcriptResult = await query(`SELECT * FROM call_transcripts WHERE call_id = $1`, [originalCallId]);
+      if (transcriptResult.rows.length > 0) {
+        logger.info(`[Job] Call ${callId} is a duplicate of ${originalCallId}. Copying original transcript and summary...`);
+        const tx = transcriptResult.rows[0];
+        const stringifyField = (field) => typeof field === 'object' && field !== null ? JSON.stringify(field) : field;
+        
+        await query(
+          `INSERT INTO call_transcripts (call_id, full_text, speaker_segments, word_count, language, confidence_score)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (call_id) DO UPDATE SET
+             full_text = EXCLUDED.full_text,
+             speaker_segments = EXCLUDED.speaker_segments,
+             word_count = EXCLUDED.word_count,
+             language = EXCLUDED.language,
+             updated_at = NOW()`,
+          [callId, tx.full_text, stringifyField(tx.speaker_segments), tx.word_count, tx.language, tx.confidence_score]
+        );
+
+        // Copy summary
+        const summaryResult = await query(`SELECT * FROM call_summaries WHERE call_id = $1`, [originalCallId]);
+        if (summaryResult.rows.length > 0) {
+          const sm = summaryResult.rows[0];
+          await query(
+            `INSERT INTO call_summaries (call_id, summary, key_points, action_items, follow_up_suggestions, detected_outcome, sentiment, objections)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (call_id) DO UPDATE SET
+               summary = EXCLUDED.summary,
+               key_points = EXCLUDED.key_points,
+               action_items = EXCLUDED.action_items,
+               follow_up_suggestions = EXCLUDED.follow_up_suggestions,
+               detected_outcome = EXCLUDED.detected_outcome,
+               sentiment = EXCLUDED.sentiment,
+               updated_at = NOW()`,
+            [
+              callId,
+              sm.summary,
+              stringifyField(sm.key_points),
+              stringifyField(sm.action_items),
+              stringifyField(sm.follow_up_suggestions),
+              sm.detected_outcome,
+              sm.sentiment,
+              stringifyField(sm.objections)
+            ]
+          );
+        }
+
+        // Copy notes
+        const notesResult = await query(`SELECT * FROM call_notes WHERE call_id = $1`, [originalCallId]);
+        for (const note of notesResult.rows) {
+          await query(
+            `INSERT INTO call_notes (call_id, content, is_ai_generated)
+             VALUES ($1, $2, $3)
+             ON CONFLICT DO NOTHING`,
+            [callId, note.content, note.is_ai_generated]
+          );
+        }
+
+        // Fetch duration, agent talk time, customer talk time from original call to update the new call
+        const originalCallDetails = await query(
+          `SELECT duration_seconds, agent_talk_time, customer_talk_time, call_outcome, is_pitched 
+           FROM calls WHERE id = $1`,
+          [originalCallId]
+        );
+        if (originalCallDetails.rows.length > 0) {
+          const o = originalCallDetails.rows[0];
+          await query(
+            `UPDATE calls SET 
+               duration_seconds = $1,
+               agent_talk_time = $2,
+               customer_talk_time = $3,
+               call_outcome = $4,
+               is_pitched = $5,
+               status = 'transcribed'
+             WHERE id = $6`,
+            [o.duration_seconds, o.agent_talk_time, o.customer_talk_time, o.call_outcome, o.is_pitched, callId]
+          );
+        } else {
+          await query(`UPDATE calls SET status = 'transcribed' WHERE id = $1`, [callId]);
+        }
+
+        logger.info(`[Job] Duplicate call ${callId} successfully populated with original data.`);
+        return { queued: false };
+      } else {
+        logger.warn(`[Job] Call ${callId} is a duplicate of ${originalCallId}, but the original call has not been transcribed yet. Falling back to standard transcription.`);
+      }
+    }
+
     // Mark as processing
     await query(`UPDATE calls SET status = 'processing' WHERE id = $1`, [callId]);
 
