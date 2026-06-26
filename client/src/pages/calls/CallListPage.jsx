@@ -182,19 +182,21 @@ const CallListPage = () => {
                       ) : <span className="text-slate-400 text-xs">—</span>}
                     </td>
                     <td className="text-xs text-slate-600">{call.user_name}</td>
-                    <td className="flex items-center gap-2">
-                      <Link to={`/calls/${call.id}`} className="text-xs text-brand-600 hover:underline">
-                        View
-                      </Link>
-                      <span className="text-slate-300 text-xs">|</span>
-                      <button
-                        onClick={() => handleCopyLink(call)}
-                        className="text-xs text-slate-500 hover:text-brand-600 flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
-                        title="Copy Audio Link"
-                      >
-                        <Link2 size={12} />
-                        Copy Link
-                      </button>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <Link to={`/calls/${call.id}`} className="text-xs text-brand-600 hover:underline">
+                          View
+                        </Link>
+                        <span className="text-slate-300 text-xs">|</span>
+                        <button
+                          onClick={() => handleCopyLink(call)}
+                          className="text-xs text-slate-500 hover:text-brand-600 flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+                          title="Copy Audio Link"
+                        >
+                          <Link2 size={12} className="shrink-0" />
+                          Copy Link
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
