@@ -26,10 +26,8 @@ const app = express();
 
 const isProd = process.env.NODE_ENV === 'production';
 
-// Trust Vercel's proxy (needed for correct IP in rate limiting)
-if (isProd) {
-  app.set('trust proxy', 1);
-}
+// Trust reverse proxies (needed for correct IP resolution on Render, Vercel, Cloudflare, etc.)
+app.set('trust proxy', true);
 
 // Security
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -41,20 +39,21 @@ app.use(cors({
   credentials: true,
 }));
 
-// Rate limiting — use memory store (default), acceptable for serverless
-// Note: each serverless instance has its own memory, so this is per-instance
+// Rate limiting
 app.use('/api/auth', rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isProd ? 50 : 1000,
+  max: isProd ? 300 : 2000,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
   message: { success: false, message: 'Too many requests, please try again later.' },
 }));
 app.use('/api', rateLimit({
   windowMs: 1 * 60 * 1000,
-  max: isProd ? 500 : 5000,
+  max: isProd ? 3000 : 10000,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
 }));
 
 // Local uploads only in development — Vercel filesystem is read-only
