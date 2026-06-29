@@ -1,15 +1,7 @@
 import axios from 'axios'
 
-const getApiBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && !envUrl.includes('onrender.com')) {
-    return envUrl;
-  }
-  return '/api';
-};
-
 const api = axios.create({
-  baseURL: getApiBaseUrl(),
+  baseURL: import.meta.env.VITE_API_URL || 'https://caller-id-crm.onrender.com/api',
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 })
