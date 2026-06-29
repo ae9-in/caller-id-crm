@@ -13,7 +13,7 @@ const sanitizeDbUrl = (url) => {
   }
 };
 
-const rawDbUrl = process.env.DATABASE_URL;
+const rawDbUrl = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_3iFGCTUj7XEz@ep-proud-band-at863xzm-pooler.c-9.us-east-1.aws.neon.tech/neondb?sslmode=require';
 const cleanDbUrl = sanitizeDbUrl(rawDbUrl);
 
 const poolConfig = cleanDbUrl

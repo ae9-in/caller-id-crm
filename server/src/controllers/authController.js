@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { sendResetEmail } = require('../services/emailService');
 
 const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, {
+  return jwt.sign({ userId }, process.env.JWT_SECRET || 'callcrm_super_secret_key_change_in_production', {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 };
