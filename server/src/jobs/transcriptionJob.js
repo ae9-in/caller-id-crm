@@ -202,7 +202,8 @@ const completeTranscriptionProcessing = async (callId, transcriptData, businessI
   // Translate regional languages to English (always translate to English as requested)
   try {
     const detectedLang = (transcriptData.language || '').toLowerCase();
-    const isRegional = detectedLang && detectedLang !== 'en' && !detectedLang.startsWith('en-') && !detectedLang.startsWith('en_');
+    const hasNonAscii = /[^\x00-\x7F]/.test(transcriptData.text || '');
+    const isRegional = hasNonAscii || (detectedLang && detectedLang !== 'en' && !detectedLang.startsWith('en-') && !detectedLang.startsWith('en_'));
     
     if (isRegional) {
       const { translateTranscriptToEnglish } = require('../services/aiService');
