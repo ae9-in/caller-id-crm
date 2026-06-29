@@ -26,18 +26,37 @@ const app = express();
 
 const isProd = process.env.NODE_ENV === 'production';
 
-// Trust reverse proxies (needed for correct IP resolution on Render, Vercel, Cloudflare, etc.)
+// 1. Trust reverse proxies
 app.set('trust proxy', true);
 
-// Security
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow all origins for now — lock down after confirming your Vercel frontend URL
-    return callback(null, true);
-  },
+// 2. Bulletproof CORS setup
+const corsOptions = {
+  origin: (origin, callback) => callback(null, true),
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-AssemblyAI-Webhook-Secret'],
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
+// 3. Explicit CORS Header Injector & Preflight Interceptor (guarantees headers on all responses & 200 for OPTIONS)
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-AssemblyAI-Webhook-Secret');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+
+// 4. Security headers (after CORS)
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // Rate limiting
 app.use('/api/auth', rateLimit({
