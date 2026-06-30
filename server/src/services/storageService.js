@@ -151,7 +151,10 @@ const deleteFile = async (key) => {
       if (!publicId.startsWith('call_recordings/')) {
         publicId = `call_recordings/${publicId}`;
       }
-      publicId = stripExtension(publicId);
+      const hasMediaExt = /\.(mp3|wav|m4a|mp4|wma|aac|webm|ogg|flac|avi|mov|mkv)$/i.test(key);
+      if (!hasMediaExt || isRaw) {
+        publicId = stripExtension(publicId);
+      }
       await cloudinary.uploader.destroy(publicId, { resource_type: isRaw ? 'raw' : 'video' });
       console.log(`[Storage] Deleted Cloudinary asset: ${publicId}`);
     } catch (error) {
@@ -193,8 +196,25 @@ const getSignedDownloadUrl = async (key, expiresIn = 3600) => {
     if (!publicId.startsWith('call_recordings/')) {
       publicId = `call_recordings/${publicId}`;
     }
-    publicId = stripExtension(publicId);
-    return cloudinary.url(publicId, { secure: true, resource_type: isRaw ? 'raw' : 'video' });
+    
+    const hasMediaExt = /\.(mp3|wav|m4a|mp4|wma|aac|webm|ogg|flac|avi|mov|mkv)$/i.test(key);
+    const options = { secure: true, resource_type: isRaw ? 'raw' : 'video' };
+    
+    if (!isRaw) {
+      if (hasMediaExt) {
+        const ext = path.extname(key).toLowerCase().replace('.', '');
+        if (ext !== 'mp3') {
+          options.format = 'mp3';
+        }
+      } else {
+        publicId = stripExtension(publicId);
+        options.format = 'mp3';
+      }
+    } else {
+      publicId = stripExtension(publicId);
+    }
+    
+    return cloudinary.url(publicId, options);
   }
 
   if (!hasS3Config()) {
