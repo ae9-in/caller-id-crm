@@ -13,7 +13,7 @@ const UploadCallPage = () => {
   const location = useLocation()
   const prefill = location.state || {}
 
-  const [file, setFile] = useState(null)
+  const [selectedFiles, setSelectedFiles] = useState([])
   const [form, setForm] = useState({
     title: '',
     business_id: prefill.business_id || '',
@@ -39,24 +39,25 @@ const UploadCallPage = () => {
       'application/x-zip': ['.zip', '.ZIP'],
       'application/compressed': ['.zip', '.ZIP']
     },
-    maxFiles: 1,
-    onDrop: ([f]) => {
-      if (f) {
-        setFile(f)
-        const isZip = f.name.toLowerCase().endsWith('.zip') || f.type === 'application/zip' || f.type === 'application/x-zip-compressed';
-        if (!isZip && !form.title) {
-          setForm((p) => ({ ...p, title: f.name.replace(/\.[^.]+$/, '') }))
+    onDrop: (acceptedFiles) => {
+      if (acceptedFiles && acceptedFiles.length > 0) {
+        setSelectedFiles(acceptedFiles)
+        const firstFile = acceptedFiles[0]
+        const isZip = acceptedFiles.length === 1 && (firstFile.name.toLowerCase().endsWith('.zip') || firstFile.type === 'application/zip' || firstFile.type === 'application/x-zip-compressed')
+        if (acceptedFiles.length === 1 && !isZip) {
+          setForm((p) => ({ ...p, title: firstFile.name.replace(/\.[^.]+$/, '') }))
         }
       }
     },
   })
 
   const handleUpload = async () => {
-    if (!file) return toast.error('Please select a file')
+    if (selectedFiles.length === 0) return toast.error('Please select one or more files')
     setUploading(true)
     setProgress(0)
     try {
-      const isZip = file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
+      const firstFile = selectedFiles[0]
+      const isZip = selectedFiles.length === 1 && (firstFile.name.toLowerCase().endsWith('.zip') || firstFile.type === 'application/zip' || firstFile.type === 'application/x-zip-compressed')
       
       if (isZip) {
         const toastId = toast.loading('Loading ZIP extractor...');
@@ -83,7 +84,7 @@ const UploadCallPage = () => {
         toast.loading('Extracting files from ZIP...', { id: toastId });
         let zip;
         try {
-          zip = await JSZip.loadAsync(file);
+          zip = await JSZip.loadAsync(firstFile);
         } catch (err) {
           toast.error(`Invalid or corrupted ZIP file: ${err.message}`, { id: toastId });
           setUploading(false);
@@ -241,88 +242,186 @@ const UploadCallPage = () => {
         } else {
           toast.error('Failed to upload any files from the ZIP archive', { id: toastId });
         }
-        setUploading(false);
-        return;
-      }
+      } else if (selectedFiles.length > 1) {
+        // Multi-file drag and drop upload
+        const toastId = toast.loading(`Preparing to upload ${selectedFiles.length} files...`);
+        const uploadedCalls = [];
+        let successCount = 0;
 
-      let directUpload = false;
-      let uploadUrl = null;
-      let fileKey = null;
-      let presignedRes = null;
+        for (let idx = 0; idx < selectedFiles.length; idx++) {
+          const audioFile = selectedFiles[idx];
+          const filename = audioFile.name;
+          toast.loading(`Uploading file ${idx + 1} of ${selectedFiles.length}: ${filename}...`, { id: toastId });
 
-      try {
-        // Request presigned URL
-        presignedRes = await callService.getPresignedUpload({
-          fileName: file.name,
-          fileType: file.type || 'application/octet-stream',
-          business_id: form.business_id || undefined,
-        });
-        if (presignedRes.data?.data) {
-          directUpload = presignedRes.data.data.directUpload;
-          uploadUrl = presignedRes.data.data.uploadUrl;
-          fileKey = presignedRes.data.data.fileKey;
-        }
-      } catch (presignedErr) {
-        console.warn('[Upload] Presigned upload URL fetch failed, falling back to standard upload:', presignedErr.message);
-        directUpload = false;
-      }
+          try {
+            let directUpload = false;
+            let uploadUrl = null;
+            let fileKey = null;
+            let presignedRes = null;
 
-      if (directUpload) {
-        let uploadedUrl = '';
-        let uploadedKey = fileKey;
-
-        if (presignedRes.data.data.provider === 'cloudinary') {
-          const { fields, uploadUrl: cloudinaryUrl } = presignedRes.data.data;
-          const fd = new FormData();
-          
-          Object.entries(fields).forEach(([k, v]) => {
-            fd.append(k, v);
-          });
-          fd.append('file', file);
-
-          const cloudinaryRes = await axios.post(cloudinaryUrl, fd, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            onUploadProgress: (e) => {
-              if (e.total) {
-                setProgress(Math.round((e.loaded * 100) / e.total));
+            try {
+              presignedRes = await callService.getPresignedUpload({
+                fileName: audioFile.name,
+                fileType: audioFile.type || 'application/octet-stream',
+                business_id: form.business_id || undefined,
+              });
+              if (presignedRes.data?.data) {
+                directUpload = presignedRes.data.data.directUpload;
+                uploadUrl = presignedRes.data.data.uploadUrl;
+                fileKey = presignedRes.data.data.fileKey;
               }
-            },
-          });
+            } catch (presignedErr) {
+              directUpload = false;
+            }
 
-          uploadedUrl = cloudinaryRes.data.secure_url;
-          uploadedKey = cloudinaryRes.data.public_id;
+            let uploadedUrl = '';
+            let uploadedKey = fileKey;
+
+            if (directUpload) {
+              if (presignedRes.data.data.provider === 'cloudinary') {
+                const { fields, uploadUrl: cloudinaryUrl } = presignedRes.data.data;
+                const fd = new FormData();
+                Object.entries(fields).forEach(([k, v]) => {
+                  fd.append(k, v);
+                });
+                fd.append('file', audioFile);
+
+                const cloudinaryRes = await axios.post(cloudinaryUrl, fd, {
+                  headers: { 'Content-Type': 'multipart/form-data' },
+                  onUploadProgress: (e) => {
+                    if (e.total) {
+                      const fileProg = Math.round((e.loaded * 100) / e.total);
+                      setProgress(Math.round(((idx + (fileProg / 100)) * 100) / selectedFiles.length));
+                    }
+                  },
+                });
+
+                uploadedUrl = cloudinaryRes.data.secure_url;
+                uploadedKey = cloudinaryRes.data.public_id;
+              } else {
+                await axios.put(uploadUrl, audioFile, {
+                  headers: { 'Content-Type': audioFile.type || 'application/octet-stream' },
+                  onUploadProgress: (e) => {
+                    if (e.total) {
+                      const fileProg = Math.round((e.loaded * 100) / e.total);
+                      setProgress(Math.round(((idx + (fileProg / 100)) * 100) / selectedFiles.length));
+                    }
+                  },
+                });
+              }
+
+              const res = await callService.uploadDirect({
+                fileKey: uploadedKey,
+                fileUrl: uploadedUrl || undefined,
+                fileName: audioFile.name,
+                fileSize: audioFile.size,
+                mimeType: audioFile.type,
+                title: filename.replace(/\.[^.]+$/, ''),
+                business_id: form.business_id || undefined,
+                call_date: new Date().toISOString(),
+                audio_language: form.audio_language,
+                transcription_lang: form.transcription_lang,
+              });
+
+              uploadedCalls.push(res.data.data);
+              successCount++;
+            } else {
+              const fd = new FormData();
+              fd.append('audio_language', form.audio_language);
+              fd.append('transcription_lang', form.transcription_lang);
+              if (form.business_id) fd.append('business_id', form.business_id);
+              fd.append('audio', audioFile);
+              fd.append('title', filename.replace(/\.[^.]+$/, ''));
+              fd.append('call_date', new Date().toISOString());
+
+              const res = await callService.upload(fd, (e) => {
+                if (e.total) {
+                  const fileProg = Math.round((e.loaded * 100) / e.total);
+                  setProgress(Math.round(((idx + (fileProg / 100)) * 100) / selectedFiles.length));
+                }
+              });
+
+              uploadedCalls.push(res.data.data);
+              successCount++;
+            }
+          } catch (fileErr) {
+            toast.error(`Error uploading ${filename}: ${fileErr.message || 'unknown error'}`);
+          }
+        }
+
+        if (successCount > 0) {
+          toast.success(`Successfully uploaded ${successCount} calls!`, { id: toastId });
+          setResult({
+            count: successCount,
+            calls: uploadedCalls
+          });
         } else {
-          // S3 direct PUT upload
-          await axios.put(uploadUrl, file, {
-            headers: { 'Content-Type': file.type || 'application/octet-stream' },
-            onUploadProgress: (e) => {
-              if (e.total) {
-                setProgress(Math.round((e.loaded * 100) / e.total));
-              }
-            },
-          });
+          toast.error('Failed to upload files', { id: toastId });
         }
+      } else {
+        // Single file upload
+        const file = selectedFiles[0];
+        let directUpload = false;
+        let uploadUrl = null;
+        let fileKey = null;
+        let presignedRes = null;
 
-        // Notify backend to process and save call metadata
-        let res;
-        if (isZip) {
-          res = await callService.uploadZipDirect({
-            fileKey: uploadedKey,
-            fileUrl: uploadedUrl || undefined,
+        try {
+          presignedRes = await callService.getPresignedUpload({
             fileName: file.name,
-            fileSize: file.size,
+            fileType: file.type || 'application/octet-stream',
             business_id: form.business_id || undefined,
-            audio_language: form.audio_language,
-            transcription_lang: form.transcription_lang,
           });
-        } else {
+          if (presignedRes.data?.data) {
+            directUpload = presignedRes.data.data.directUpload;
+            uploadUrl = presignedRes.data.data.uploadUrl;
+            fileKey = presignedRes.data.data.fileKey;
+          }
+        } catch (presignedErr) {
+          directUpload = false;
+        }
+
+        if (directUpload) {
+          let uploadedUrl = '';
+          let uploadedKey = fileKey;
+
+          if (presignedRes.data.data.provider === 'cloudinary') {
+            const { fields, uploadUrl: cloudinaryUrl } = presignedRes.data.data;
+            const fd = new FormData();
+            Object.entries(fields).forEach(([k, v]) => {
+              fd.append(k, v);
+            });
+            fd.append('file', file);
+
+            const cloudinaryRes = await axios.post(cloudinaryUrl, fd, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+              onUploadProgress: (e) => {
+                if (e.total) {
+                  setProgress(Math.round((e.loaded * 100) / e.total));
+                }
+              },
+            });
+
+            uploadedUrl = cloudinaryRes.data.secure_url;
+            uploadedKey = cloudinaryRes.data.public_id;
+          } else {
+            await axios.put(uploadUrl, file, {
+              headers: { 'Content-Type': file.type || 'application/octet-stream' },
+              onUploadProgress: (e) => {
+                if (e.total) {
+                  setProgress(Math.round((e.loaded * 100) / e.total));
+                }
+              },
+            });
+          }
+
           let callDateIso = new Date().toISOString();
           if (form.call_date) {
             try {
               callDateIso = new Date(form.call_date).toISOString();
             } catch {}
           }
-          res = await callService.uploadDirect({
+          const res = await callService.uploadDirect({
             fileKey: uploadedKey,
             fileUrl: uploadedUrl || undefined,
             fileName: file.name,
@@ -334,43 +433,36 @@ const UploadCallPage = () => {
             audio_language: form.audio_language,
             transcription_lang: form.transcription_lang,
           });
-        }
-        setResult(res.data.data)
-        toast.success(isZip ? `${res.data.data.count} calls successfully queued for transcription!` : 'Recording uploaded and queued for AI transcription!')
-      } else {
-        // Fallback: standard multipart form upload
-        const fd = new FormData()
-        fd.append('audio_language', form.audio_language)
-        fd.append('transcription_lang', form.transcription_lang)
-        if (form.business_id) fd.append('business_id', form.business_id)
-        
-        if (isZip) {
-          fd.append('zip', file)
+          setResult(res.data.data);
+          toast.success('Recording uploaded and queued for AI transcription!');
         } else {
-          fd.append('audio', file)
-          fd.append('title', form.title || file.name)
+          const fd = new FormData();
+          fd.append('audio_language', form.audio_language);
+          fd.append('transcription_lang', form.transcription_lang);
+          if (form.business_id) fd.append('business_id', form.business_id);
+          fd.append('audio', file);
+          fd.append('title', form.title || file.name);
           if (form.call_date) {
             try {
-              fd.append('call_date', new Date(form.call_date).toISOString())
+              fd.append('call_date', new Date(form.call_date).toISOString());
             } catch {
-              fd.append('call_date', new Date().toISOString())
+              fd.append('call_date', new Date().toISOString());
             }
           }
-        }
 
-        const uploadFn = isZip ? callService.uploadZip : callService.upload;
-        const res = await uploadFn(fd, (e) => {
-          if (e.total) {
-            setProgress(Math.round((e.loaded * 100) / e.total))
-          }
-        })
-        setResult(res.data.data)
-        toast.success(isZip ? `${res.data.data.count} calls successfully queued for transcription!` : 'Recording uploaded and queued for AI transcription!')
+          const res = await callService.upload(fd, (e) => {
+            if (e.total) {
+              setProgress(Math.round((e.loaded * 100) / e.total));
+            }
+          });
+          setResult(res.data.data);
+          toast.success('Recording uploaded and queued for AI transcription!');
+        }
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Upload failed')
+      toast.error(err.response?.data?.message || 'Upload failed');
     } finally {
-      setUploading(false)
+      setUploading(false);
     }
   }
 
@@ -434,7 +526,7 @@ const UploadCallPage = () => {
               <Button>View Call Details</Button>
             </Link>
           )}
-          <Button variant="secondary" onClick={() => { setResult(null); setFile(null); setProgress(0) }}>
+          <Button variant="secondary" onClick={() => { setResult(null); setSelectedFiles([]); setProgress(0) }}>
             Upload Another
           </Button>
         </div>
@@ -442,9 +534,13 @@ const UploadCallPage = () => {
     )
   }
 
+  const hasFiles = selectedFiles.length > 0;
+  const isZip = selectedFiles.length === 1 && (selectedFiles[0].name.toLowerCase().endsWith('.zip') || selectedFiles[0].type === 'application/zip' || selectedFiles[0].type === 'application/x-zip-compressed');
+  const isBatch = selectedFiles.length > 1 || isZip;
+
   return (
     <div className="max-w-2xl mx-auto fade-in">
-      <PageHeader title="Upload Recording" description="Upload an audio recording or a ZIP archive containing multiple recordings to transcribe and analyze with AI" />
+      <PageHeader title="Upload Recording" description="Upload audio recordings or a ZIP archive containing multiple recordings to transcribe and analyze with AI" />
 
       <Card className="p-6 space-y-5">
         {/* Drop zone */}
@@ -454,19 +550,30 @@ const UploadCallPage = () => {
             'border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors',
             isDragActive
               ? 'border-brand-400 bg-brand-50'
-              : file
+              : hasFiles
               ? 'border-emerald-400 bg-emerald-50'
               : 'border-slate-300 hover:border-brand-400 hover:bg-slate-50'
           )}
         >
           <input {...getInputProps()} />
-          {file ? (
+          {hasFiles ? (
             <div>
               <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Check size={22} className="text-emerald-600" />
               </div>
-              <p className="font-medium text-slate-800">{file.name}</p>
-              <p className="text-sm text-slate-500 mt-1">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+              {selectedFiles.length === 1 ? (
+                <>
+                  <p className="font-medium text-slate-800">{selectedFiles[0].name}</p>
+                  <p className="text-sm text-slate-500 mt-1">{(selectedFiles[0].size / (1024 * 1024)).toFixed(2)} MB</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium text-slate-800">{selectedFiles.length} files selected</p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Total size: {(selectedFiles.reduce((acc, curr) => acc + curr.size, 0) / (1024 * 1024)).toFixed(2)} MB
+                  </p>
+                </>
+              )}
               <p className="text-xs text-brand-600 mt-2">Click or drag to replace</p>
             </div>
           ) : (
@@ -475,21 +582,23 @@ const UploadCallPage = () => {
                 <Upload size={22} className="text-slate-500" />
               </div>
               <p className="font-medium text-slate-700">
-                {isDragActive ? 'Drop your file here' : 'Drag & drop or click to upload'}
+                {isDragActive ? 'Drop your files here' : 'Drag & drop or click to upload'}
               </p>
-              <p className="text-sm text-slate-400 mt-1">Supports MP3, WAV, M4A, OGG, or ZIP (batch) · Max 50MB</p>
+              <p className="text-sm text-slate-400 mt-1">Supports audio files, ZIP (batch), or multiple individual audio files dropped at once · Max 50MB</p>
             </div>
           )}
         </div>
 
         {/* Form fields */}
-        {file && (file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed') ? (
+        {isBatch ? (
           <div className="p-4 bg-brand-50 border border-brand-100 rounded-xl flex items-start gap-2.5 text-left">
             <AlertCircle size={18} className="text-brand-600 shrink-0 mt-0.5" />
             <div>
-              <p className="text-brand-800 text-sm font-medium">Batch ZIP Archive Detected</p>
+              <p className="text-brand-800 text-sm font-medium">
+                {isZip ? 'Batch ZIP Archive Detected' : 'Multiple Files Batch Detected'}
+              </p>
               <p className="text-brand-600 text-xs mt-0.5">
-                The recording titles will be automatically generated from the names of the audio files contained inside the ZIP archive.
+                Recording titles will be automatically generated from the filenames. Call date will be set to current time.
               </p>
             </div>
           </div>
@@ -561,7 +670,7 @@ const UploadCallPage = () => {
         <div className="flex gap-3 pt-2">
           <Button
             onClick={handleUpload}
-            disabled={!file || uploading}
+            disabled={!hasFiles || uploading}
             className="flex-1"
           >
             {uploading ? (
