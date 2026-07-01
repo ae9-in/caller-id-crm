@@ -20,12 +20,18 @@ const getBusinesses = async (req, res, next) => {
     if (search) { conditions.push(`(b.name ILIKE $${i} OR b.contact_person ILIKE $${i} OR b.email ILIKE $${i})`); params.push(`%${search}%`); i++; }
     if (status) { conditions.push(`b.status = $${i++}`); params.push(status); }
     if (priority) { conditions.push(`b.priority = $${i++}`); params.push(priority); }
-    if (assigned_user_id) { conditions.push(`b.assigned_user_id = $${i++}`); params.push(assigned_user_id); }
+    
+    if (assigned_user_id) {
+      conditions.push(`(b.assigned_user_id = $${i} OR EXISTS (SELECT 1 FROM business_assignees ba WHERE ba.business_id = b.id AND ba.user_id = $${i}))`);
+      params.push(assigned_user_id);
+      i++;
+    }
 
     // Agents see only assigned businesses
     if (req.user.role === 'agent') {
-      conditions.push(`b.assigned_user_id = $${i++}`);
+      conditions.push(`(b.assigned_user_id = $${i} OR EXISTS (SELECT 1 FROM business_assignees ba WHERE ba.business_id = b.id AND ba.user_id = $${i}))`);
       params.push(req.user.id);
+      i++;
     }
 
     const whereClause = conditions.join(' AND ');
@@ -34,9 +40,12 @@ const getBusinesses = async (req, res, next) => {
       query(
         `SELECT b.*, 
                 u.first_name || ' ' || u.last_name as assigned_user_name,
-                COALESCE(json_agg(DISTINCT jsonb_build_object('id', t.id, 'name', t.name, 'color', t.color)) FILTER (WHERE t.id IS NOT NULL), '[]') as tags
+                COALESCE(json_agg(DISTINCT jsonb_build_object('id', t.id, 'name', t.name, 'color', t.color)) FILTER (WHERE t.id IS NOT NULL), '[]') as tags,
+                COALESCE(json_agg(DISTINCT jsonb_build_object('id', ua.id, 'first_name', ua.first_name, 'last_name', ua.last_name, 'email', ua.email)) FILTER (WHERE ua.id IS NOT NULL), '[]') as assignees
          FROM businesses b
          LEFT JOIN users u ON b.assigned_user_id = u.id
+         LEFT JOIN business_assignees bas ON b.id = bas.business_id
+         LEFT JOIN users ua ON bas.user_id = ua.id
          LEFT JOIN business_tags bt ON b.id = bt.business_id
          LEFT JOIN tags t ON bt.tag_id = t.id
          WHERE ${whereClause}
@@ -60,10 +69,13 @@ const getBusinessById = async (req, res, next) => {
       `SELECT b.*,
               u.first_name || ' ' || u.last_name as assigned_user_name,
               cb.first_name || ' ' || cb.last_name as created_by_name,
-              COALESCE(json_agg(DISTINCT jsonb_build_object('id', t.id, 'name', t.name, 'color', t.color)) FILTER (WHERE t.id IS NOT NULL), '[]') as tags
+              COALESCE(json_agg(DISTINCT jsonb_build_object('id', t.id, 'name', t.name, 'color', t.color)) FILTER (WHERE t.id IS NOT NULL), '[]') as tags,
+              COALESCE(json_agg(DISTINCT jsonb_build_object('id', ua.id, 'first_name', ua.first_name, 'last_name', ua.last_name, 'email', ua.email)) FILTER (WHERE ua.id IS NOT NULL), '[]') as assignees
        FROM businesses b
        LEFT JOIN users u ON b.assigned_user_id = u.id
        LEFT JOIN users cb ON b.created_by = cb.id
+       LEFT JOIN business_assignees bas ON b.id = bas.business_id
+       LEFT JOIN users ua ON bas.user_id = ua.id
        LEFT JOIN business_tags bt ON b.id = bt.business_id
        LEFT JOIN tags t ON bt.tag_id = t.id
        WHERE b.id = $1
@@ -81,20 +93,36 @@ const createBusiness = async (req, res, next) => {
   try {
     const {
       name, category, industry, contact_person, phone, email,
-      website, address, city, state, status, priority, assigned_user_id, notes, tags,
+      website, address, city, state, status, priority, assigned_user_id, assigned_user_ids, notes, tags,
     } = req.body;
 
     if (!name) return sendError(res, 400, 'Business name is required');
+
+    let userIds = [];
+    if (assigned_user_ids && Array.isArray(assigned_user_ids)) {
+      userIds = assigned_user_ids;
+    } else if (assigned_user_id) {
+      userIds = [assigned_user_id];
+    } else {
+      userIds = [req.user.id];
+    }
+
+    const primaryAssignedUserId = userIds[0] || null;
 
     const result = await query(
       `INSERT INTO businesses (name, category, industry, contact_person, phone, email, website, address, city, state, status, priority, assigned_user_id, created_by, notes)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [name, category, industry, contact_person, phone, email, website, address, city, state,
-       status || 'new_lead', priority || 'medium', assigned_user_id || req.user.id, req.user.id, notes]
+       status || 'new_lead', priority || 'medium', primaryAssignedUserId, req.user.id, notes]
     );
 
     const business = result.rows[0];
+
+    if (userIds.length > 0) {
+      const assigneeInserts = userIds.map((userId) => `('${business.id}', '${userId}')`).join(',');
+      await query(`INSERT INTO business_assignees (business_id, user_id) VALUES ${assigneeInserts} ON CONFLICT DO NOTHING`);
+    }
 
     if (tags && Array.isArray(tags) && tags.length > 0) {
       const tagInserts = tags.map((tagId) => `('${business.id}', '${tagId}')`).join(',');
@@ -115,7 +143,24 @@ const createBusiness = async (req, res, next) => {
 
 const updateBusiness = async (req, res, next) => {
   try {
-    const { tags, ...fields } = req.body;
+    const { tags, assigned_user_ids, ...fields } = req.body;
+    
+    if (assigned_user_ids !== undefined && Array.isArray(assigned_user_ids)) {
+      await query(`DELETE FROM business_assignees WHERE business_id = $1`, [req.params.id]);
+      if (assigned_user_ids.length > 0) {
+        const assigneeInserts = assigned_user_ids.map((userId) => `('${req.params.id}', '${userId}')`).join(',');
+        await query(`INSERT INTO business_assignees (business_id, user_id) VALUES ${assigneeInserts} ON CONFLICT DO NOTHING`);
+        fields.assigned_user_id = assigned_user_ids[0];
+      } else {
+        fields.assigned_user_id = null;
+      }
+    } else if (fields.assigned_user_id !== undefined) {
+      await query(`DELETE FROM business_assignees WHERE business_id = $1`, [req.params.id]);
+      if (fields.assigned_user_id) {
+        await query(`INSERT INTO business_assignees (business_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [req.params.id, fields.assigned_user_id]);
+      }
+    }
+
     const allowed = ['name','category','industry','contact_person','phone','email','website','address','city','state','status','priority','assigned_user_id','notes'];
     const updates = [];
     const params = [];

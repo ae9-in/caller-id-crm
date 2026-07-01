@@ -171,7 +171,14 @@ const BusinessDetailPage = () => {
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div><p className="text-slate-400 text-xs">Priority</p><p className="font-medium capitalize">{business.priority}</p></div>
               <div><p className="text-slate-400 text-xs">Status</p><p className="font-medium">{getStatusLabel(business.status)}</p></div>
-              <div><p className="text-slate-400 text-xs">Assigned To</p><p className="font-medium">{business.assigned_user_name || business.created_by_name || 'Admin'}</p></div>
+              <div>
+                <p className="text-slate-400 text-xs">Assigned To</p>
+                <p className="font-medium">
+                  {business.assignees && business.assignees.length > 0
+                    ? business.assignees.map((ua) => `${ua.first_name} ${ua.last_name || ''}`).join(', ')
+                    : (business.assigned_user_name || business.created_by_name || 'Admin')}
+                </p>
+              </div>
               <div><p className="text-slate-400 text-xs">Added By</p><p className="font-medium">{business.created_by_name || '—'}</p></div>
               <div><p className="text-slate-400 text-xs">Created</p><p className="font-medium">{formatDate(business.created_at)}</p></div>
               <div><p className="text-slate-400 text-xs">Updated</p><p className="font-medium">{formatDate(business.updated_at)}</p></div>

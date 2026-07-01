@@ -10,8 +10,8 @@ const BusinessFormModal = ({ open, onClose, business, onSaved }) => {
   const { user: currentUser } = useAuth()
   const [form, setForm] = useState({
     name: '',
-    assigned_user_id: '',
   })
+  const [assignedUserIds, setAssignedUserIds] = useState([])
   const [loading, setLoading] = useState(false)
   const [tags, setTags] = useState([])
   const [allTags, setAllTags] = useState([])
@@ -22,15 +22,18 @@ const BusinessFormModal = ({ open, onClose, business, onSaved }) => {
     if (business) {
       setForm({
         name: business.name || '',
-        assigned_user_id: business.assigned_user_id || '',
       })
+      const ids = business.assignees && business.assignees.length > 0
+        ? business.assignees.map((u) => u.id)
+        : (business.assigned_user_id ? [business.assigned_user_id] : [])
+      setAssignedUserIds(ids)
       setTags((business.tags || []).map((t) => t.id))
       setPitchFile(null)
     } else {
       setForm({
         name: '',
-        assigned_user_id: currentUser?.id || '',
       })
+      setAssignedUserIds(currentUser?.id ? [currentUser.id] : [])
       setTags([])
       setPitchFile(null)
     }
@@ -45,16 +48,32 @@ const BusinessFormModal = ({ open, onClose, business, onSaved }) => {
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
+  const toggleUser = (userId) => {
+    setAssignedUserIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    )
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.name.trim()) return
+    if (assignedUserIds.length === 0) {
+      return toast.error('Please assign at least one user')
+    }
     setLoading(true)
     try {
+      const payload = {
+        name: form.name,
+        assigned_user_ids: assignedUserIds,
+        tags,
+      }
       if (isEdit) {
-        await businessService.update(business.id, { ...form, tags })
+        await businessService.update(business.id, payload)
         toast.success('Business updated')
       } else {
-        const res = await businessService.create({ ...form, tags })
+        const res = await businessService.create(payload)
         const newBiz = res.data.data
         if (pitchFile && newBiz && newBiz.id) {
           const formData = new FormData()
@@ -80,11 +99,6 @@ const BusinessFormModal = ({ open, onClose, business, onSaved }) => {
     setTags((prev) => prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId])
   }
 
-  const userOptions = users.map((u) => ({
-    value: u.id,
-    label: `${u.first_name} ${u.last_name || ''} (${u.role})`.trim(),
-  }))
-
   return (
     <Modal
       open={open}
@@ -109,13 +123,30 @@ const BusinessFormModal = ({ open, onClose, business, onSaved }) => {
           required
         />
         
-        <Select
-          label="Assigned User *"
-          options={userOptions}
-          value={form.assigned_user_id}
-          onChange={set('assigned_user_id')}
-          required
-        />
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-slate-700">Assign To Users *</label>
+          <div className="flex flex-wrap gap-2 py-1 max-h-40 overflow-y-auto scrollbar-thin">
+            {users.map((u) => {
+              const isSelected = assignedUserIds.includes(u.id)
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => toggleUser(u.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+                  <span>{u.first_name} {u.last_name || ''}</span>
+                  <span className={`text-[10px] ${isSelected ? 'text-brand-100' : 'text-slate-400'}`}>({u.role})</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
         {!isEdit && (
           <div className="space-y-1">
