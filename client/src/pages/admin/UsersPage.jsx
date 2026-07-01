@@ -39,7 +39,10 @@ const UsersPage = () => {
       const response = await businessService.getAllForAssignment()
       setBusinesses(response.data.data || [])
       const assigned = (response.data.data || [])
-        .filter((b) => b.assigned_user_id === user.id)
+        .filter((b) => 
+          (b.assignees && b.assignees.some((ua) => ua.id === user.id)) ||
+          b.assigned_user_id === user.id
+        )
         .map((b) => b.id)
       setSelectedBusinessIds(assigned)
     } catch (err) {

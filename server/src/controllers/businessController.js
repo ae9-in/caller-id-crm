@@ -309,7 +309,13 @@ const createTag = async (req, res, next) => {
 const getBusinessesForAssignment = async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT id, name, assigned_user_id FROM businesses ORDER BY name ASC`
+      `SELECT b.id, b.name, b.assigned_user_id,
+              COALESCE(json_agg(DISTINCT jsonb_build_object('id', ua.id)) FILTER (WHERE ua.id IS NOT NULL), '[]') as assignees
+       FROM businesses b
+       LEFT JOIN business_assignees bas ON b.id = bas.business_id
+       LEFT JOIN users ua ON bas.user_id = ua.id
+       GROUP BY b.id
+       ORDER BY b.name ASC`
     );
     sendSuccess(res, result.rows);
   } catch (err) {
@@ -326,18 +332,41 @@ const assignBusinessesToUser = async (req, res, next) => {
       return sendError(res, 400, 'businessIds must be an array');
     }
 
-    // 1. Unassign all businesses currently assigned to this user
+    // Get all businesses currently assigned to this user to sync their primary assigned_user_id later
+    const currentAssignments = await query(
+      `SELECT business_id FROM business_assignees WHERE user_id = $1`,
+      [userId]
+    );
+    const affectedBusinessIds = new Set([
+      ...businessIds,
+      ...currentAssignments.rows.map((r) => r.business_id),
+    ]);
+
+    // 1. Delete all current assignments for this user in business_assignees
     await query(
-      `UPDATE businesses SET assigned_user_id = NULL, updated_at = NOW() WHERE assigned_user_id = $1`,
+      `DELETE FROM business_assignees WHERE user_id = $1`,
       [userId]
     );
 
-    // 2. Assign the new ones if the array is not empty
+    // 2. Insert the new ones if the array is not empty
     if (businessIds.length > 0) {
-      const placeholders = businessIds.map((_, index) => `$${index + 2}`).join(', ');
+      const inserts = businessIds.map((bizId) => `('${bizId}', '${userId}')`).join(', ');
       await query(
-        `UPDATE businesses SET assigned_user_id = $1, updated_at = NOW() WHERE id IN (${placeholders})`,
-        [userId, ...businessIds]
+        `INSERT INTO business_assignees (business_id, user_id) VALUES ${inserts} ON CONFLICT DO NOTHING`
+      );
+    }
+
+    // 3. For all affected businesses, update their primary assigned_user_id column
+    // to keep the single field in sync with the first assignee from business_assignees.
+    for (const bizId of affectedBusinessIds) {
+      const assigneesRes = await query(
+        `SELECT user_id FROM business_assignees WHERE business_id = $1 ORDER BY user_id LIMIT 1`,
+        [bizId]
+      );
+      const primaryAssignee = assigneesRes.rows[0]?.user_id || null;
+      await query(
+        `UPDATE businesses SET assigned_user_id = $1, updated_at = NOW() WHERE id = $2`,
+        [primaryAssignee, bizId]
       );
     }
 
