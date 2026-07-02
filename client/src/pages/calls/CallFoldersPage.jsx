@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { callService } from '../../services/callService'
 import { useAuth } from '../../context/AuthContext'
 import { Spinner, Button } from '../../components/ui/index'
@@ -11,6 +11,7 @@ import {
 import toast from 'react-hot-toast'
 
 const CallFoldersPage = () => {
+  const location = useLocation()
   const { user, isAdmin, isManager } = useAuth()
   const canFilterUsers = isAdmin() || isManager()
 
@@ -27,9 +28,17 @@ const CallFoldersPage = () => {
   const [search, setSearch] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedUserId, setSelectedUserId] = useState('')
+  const [selectedCallId, setSelectedCallId] = useState('')
 
   // Debounced search
   const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    const savedCallId = localStorage.getItem('crm_selected_call_id')
+    if (savedCallId) {
+      setSelectedCallId(savedCallId)
+    }
+  }, [])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -54,16 +63,42 @@ const CallFoldersPage = () => {
       // Auto-expand first folder on initial load if present
       if (folderData.length > 0) {
         const firstFolder = folderData[0]
-        setExpandedUsers((prev) => prev.length > 0 ? prev : [firstFolder.user_id])
+        
+        // Read from localStorage
+        const savedUsers = localStorage.getItem('crm_expanded_users')
+        const savedDates = localStorage.getItem('crm_expanded_dates')
+        const savedFolder = localStorage.getItem('crm_selected_folder')
+        
+        let initialUsers = []
+        let initialDates = []
+        let initialFolder = null
+        
+        if (savedUsers) {
+          try { initialUsers = JSON.parse(savedUsers) } catch (e) {}
+        }
+        if (savedDates) {
+          try { initialDates = JSON.parse(savedDates) } catch (e) {}
+        }
+        if (savedFolder) {
+          try { initialFolder = JSON.parse(savedFolder) } catch (e) {}
+        }
+        
+        setExpandedUsers((prev) => prev.length > 0 ? prev : (initialUsers.length > 0 ? initialUsers : [firstFolder.user_id]))
         
         const firstDateKey = `${firstFolder.user_id}-${firstFolder.folder_date}`
-        setExpandedDates((prev) => prev.length > 0 ? prev : [firstDateKey])
+        setExpandedDates((prev) => prev.length > 0 ? prev : (initialDates.length > 0 ? initialDates : [firstDateKey]))
 
         // Auto-select the first folder
         setSelectedFolder((prev) => {
           if (prev) {
             const exists = folderData.find(
               (f) => f.folder_date === prev.folder_date && f.user_id === prev.user_id
+            )
+            return exists || firstFolder
+          }
+          if (initialFolder) {
+            const exists = folderData.find(
+              (f) => f.folder_date === initialFolder.folder_date && f.user_id === initialFolder.user_id
             )
             return exists || firstFolder
           }
@@ -165,18 +200,45 @@ const CallFoldersPage = () => {
     userGroup.total_calls += folder.total_calls
   })
 
+  useEffect(() => {
+    if (selectedFolder) {
+      localStorage.setItem('crm_selected_folder', JSON.stringify(selectedFolder))
+    }
+  }, [selectedFolder])
+
+  useEffect(() => {
+    if (selectedCallId) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`call-card-${selectedCallId}`)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [selectedFolder, selectedCallId])
+
   // Toggle user folder expanded state
   const toggleUser = (userId) => {
-    setExpandedUsers((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    )
+    setExpandedUsers((prev) => {
+      const next = prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+      localStorage.setItem('crm_expanded_users', JSON.stringify(next))
+      return next
+    })
   }
 
   // Toggle date folder expanded state
   const toggleDate = (dateKey) => {
-    setExpandedDates((prev) =>
-      prev.includes(dateKey) ? prev.filter((k) => k !== dateKey) : [...prev, dateKey]
-    )
+    setExpandedDates((prev) => {
+      const next = prev.includes(dateKey) ? prev.filter((k) => k !== dateKey) : [...prev, dateKey]
+      localStorage.setItem('crm_expanded_dates', JSON.stringify(next))
+      return next
+    })
+  }
+
+  const handleSelectCall = (callId) => {
+    setSelectedCallId(callId)
+    localStorage.setItem('crm_selected_call_id', callId)
   }
 
   return (
@@ -361,16 +423,25 @@ const CallFoldersPage = () => {
                             {/* Level 3: Files under this Date */}
                             {isDateExpanded && (
                               <div className="pl-3.5 pr-0.5 py-0.5 space-y-1 border-l border-slate-200 dark:border-zinc-800 ml-3 animate-fade-in">
-                                {folder.calls.map((call) => (
-                                  <Link
-                                    key={call.id}
-                                    to={`/calls/${call.id}`}
-                                    className="flex items-center gap-2 p-1.5 rounded-lg text-xs text-slate-600 dark:text-zinc-400 hover:bg-slate-100/70 dark:hover:bg-zinc-800/30 transition-all min-w-0"
-                                  >
-                                    <span className="shrink-0 text-slate-400 text-[10px]">📞</span>
-                                    <span className="truncate flex-1">{call.title || call.file_name}</span>
-                                  </Link>
-                                ))}
+                                {folder.calls.map((call) => {
+                                  const isCallSelected = selectedCallId === call.id
+                                  return (
+                                    <Link
+                                      key={call.id}
+                                      to={`/calls/${call.id}`}
+                                      state={{ from: location.pathname + location.search }}
+                                      onClick={() => handleSelectCall(call.id)}
+                                      className={`flex items-center gap-2 p-1.5 rounded-lg text-xs transition-all min-w-0 ${
+                                        isCallSelected
+                                          ? 'bg-brand-50 text-brand-700 font-semibold dark:bg-brand-950/40 dark:text-brand-400'
+                                          : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100/70 dark:hover:bg-zinc-800/30'
+                                      }`}
+                                    >
+                                      <span className="shrink-0 text-slate-400 text-[10px]">📞</span>
+                                      <span className="truncate flex-1">{call.title || call.file_name}</span>
+                                    </Link>
+                                  )
+                                })}
                               </div>
                             )}
                           </div>
@@ -439,10 +510,16 @@ const CallFoldersPage = () => {
                       failed: 'Failed'
                     }
 
+                    const isCallSelected = selectedCallId === call.id
                     return (
                       <div
                         key={call.id}
-                        className="p-4 bg-[var(--color-surface)] border border-slate-200 dark:border-zinc-800 rounded-xl hover:border-brand-200 dark:hover:border-zinc-700 hover:shadow-sm transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                        id={`call-card-${call.id}`}
+                        className={`p-4 bg-[var(--color-surface)] border rounded-xl hover:border-brand-200 dark:hover:border-zinc-700 hover:shadow-sm transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                          isCallSelected
+                            ? 'border-brand-500 ring-2 ring-brand-500/20 dark:border-brand-500/80 bg-brand-50/10 dark:bg-brand-950/10'
+                            : 'border-slate-200 dark:border-zinc-800'
+                        }`}
                       >
                         <div className="space-y-1 min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -496,7 +573,11 @@ const CallFoldersPage = () => {
                           )}
 
                           {/* Detail Link */}
-                          <Link to={`/calls/${call.id}`}>
+                          <Link
+                            to={`/calls/${call.id}`}
+                            state={{ from: location.pathname + location.search }}
+                            onClick={() => handleSelectCall(call.id)}
+                          >
                             <button className="p-2 rounded-lg bg-slate-100 hover:bg-brand-50 hover:text-brand-600 dark:bg-zinc-800 dark:hover:bg-brand-950/30 dark:hover:text-brand-400 text-slate-700 dark:text-zinc-300 transition-colors">
                               <ArrowRight size={15} />
                             </button>

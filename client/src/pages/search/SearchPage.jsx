@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link, useLocation } from 'react-router-dom'
 import { Search, Building2, Phone, Calendar, FileText, StickyNote } from 'lucide-react'
 import { searchService } from '../../services/index'
 import { PageHeader, LoadingState, Card, SearchInput, Badge } from '../../components/ui/index'
@@ -26,6 +26,7 @@ const ResultSection = ({ title, icon: Icon, results, renderItem }) => {
 const clientSearchCache = {};
 
 const SearchPage = () => {
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState(searchParams.get('q') || '')
   const [results, setResults] = useState(null)
@@ -108,7 +109,7 @@ const SearchPage = () => {
               icon={Phone}
               results={results.calls}
               renderItem={(c) => (
-                <Link to={`/calls/${c.id}`}
+                <Link to={`/calls/${c.id}`} state={{ from: location.pathname + location.search }}
                   className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:bg-slate-50 hover:border-brand-200 transition-colors">
                   <div>
                     <p className="font-medium text-slate-800 text-sm">{c.title}</p>
@@ -124,7 +125,7 @@ const SearchPage = () => {
               icon={FileText}
               results={results.transcripts}
               renderItem={(t) => (
-                <Link to={`/calls/${t.id}`}
+                <Link to={`/calls/${t.id}`} state={{ from: location.pathname + location.search }}
                   className="p-3 rounded-lg border border-slate-100 hover:bg-slate-50 hover:border-brand-200 block transition-colors">
                   <p className="font-medium text-slate-800 text-sm mb-1">{t.call_title}</p>
                   {t.business_name && <p className="text-xs text-slate-400 mb-1">{t.business_name}</p>}

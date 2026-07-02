@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { Menu, Search, Bell, X, CheckCheck, Sun, Moon, Clock, Trash2, Phone, Building2, FileText } from 'lucide-react'
 import { useNotifications } from '../../context/NotificationContext'
 import { searchService } from '../../services/index'
@@ -8,6 +8,7 @@ import clsx from 'clsx'
 
 const Header = ({ onMenuClick }) => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications()
   const [showNotifications, setShowNotifications] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -222,6 +223,7 @@ const Header = ({ onMenuClick }) => {
                           <Link
                             key={c.id}
                             to={`/calls/${c.id}`}
+                            state={{ from: location.pathname + location.search }}
                             onClick={() => executeSearch(c.title)}
                             className="flex items-center justify-between px-3.5 py-1.5 hover:bg-slate-50 dark:hover:bg-zinc-800/40 text-xs"
                           >
@@ -243,6 +245,7 @@ const Header = ({ onMenuClick }) => {
                           <Link
                             key={t.id}
                             to={`/calls/${t.id}`}
+                            state={{ from: location.pathname + location.search }}
                             onClick={() => executeSearch(t.call_title)}
                             className="block px-3.5 py-1.5 hover:bg-slate-50 dark:hover:bg-zinc-800/40 text-xs text-left"
                           >

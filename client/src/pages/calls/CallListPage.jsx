@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Phone, Upload, Filter, Clock, CheckCircle2, Link2 } from 'lucide-react'
 import { callService } from '../../services/callService'
 import toast from 'react-hot-toast'
@@ -23,6 +23,7 @@ const StatusIcon = ({ status }) => {
 }
 
 const CallListPage = () => {
+  const location = useLocation()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search)
 
@@ -142,7 +143,7 @@ const CallListPage = () => {
                         <StatusIcon status={call.status} />
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <Link to={`/calls/${call.id}`} className="font-medium text-slate-800 hover:text-brand-600 block max-w-[200px] truncate">
+                            <Link to={`/calls/${call.id}`} state={{ from: location.pathname + location.search }} className="font-medium text-slate-800 hover:text-brand-600 block max-w-[200px] truncate">
                               {call.title}
                             </Link>
                             {call.is_duplicate && (
@@ -184,7 +185,7 @@ const CallListPage = () => {
                     <td className="text-xs text-slate-600">{call.user_name}</td>
                     <td>
                       <div className="flex items-center gap-2">
-                        <Link to={`/calls/${call.id}`} className="text-xs text-brand-600 hover:underline">
+                        <Link to={`/calls/${call.id}`} state={{ from: location.pathname + location.search }} className="text-xs text-brand-600 hover:underline">
                           View
                         </Link>
                         <span className="text-slate-300 text-xs">|</span>

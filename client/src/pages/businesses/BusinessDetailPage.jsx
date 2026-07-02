@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   ArrowLeft, Phone, Mail, Globe, MapPin, Edit, Plus,
   Calendar, Clock, FileText, Trash2, Tag
@@ -71,6 +71,7 @@ const BusinessDetailPage = () => {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const navigate = useNavigate()
+  const location = useLocation()
   const [activeTab, setActiveTab] = useState('overview')
   const [showEdit, setShowEdit] = useState(false)
   const [noteContent, setNoteContent] = useState('')
@@ -314,7 +315,7 @@ const BusinessDetailPage = () => {
                   {!calls?.length ? (
                     <EmptyState icon={<Phone size={36} />} title="No calls yet" description="Upload a call recording for this business" />
                   ) : calls.map((call) => (
-                    <Link key={call.id} to={`/calls/${call.id}`}
+                    <Link key={call.id} to={`/calls/${call.id}`} state={{ from: location.pathname + location.search }}
                       className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:bg-slate-50 hover:border-brand-200 transition-colors">
                       <div>
                         <p className="text-sm font-medium text-slate-800">{call.title}</p>

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import {
   ArrowLeft, Download, RefreshCw, Clock, User, Building2,
-  Mic, Brain, Copy, CheckCheck, FileText, MessageSquare, Trash2
+  Mic, Brain, Copy, CheckCheck, FileText, MessageSquare, Trash2, Link2
 } from 'lucide-react'
 import { callService } from '../../services/callService'
 import { useApi } from '../../hooks/index'
@@ -46,6 +46,7 @@ const CallDetailPage = () => {
   const { id } = useParams()
   const { isManager } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [activeTab, setActiveTab] = useState('transcript')
   const [noteContent, setNoteContent] = useState('')
@@ -53,6 +54,8 @@ const CallDetailPage = () => {
   const [copied, setCopied] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [reprocessing, setReprocessing] = useState(false)
+  const [userFolders, setUserFolders] = useState([])
+  const [foldersLoading, setFoldersLoading] = useState(false)
 
   const { data: call, loading: callLoading, refetch: refetchCall } = useApi(() => callService.getById(id), [id])
   const { data: transcript, loading: tLoading, refetch: refetchTranscript } = useApi(() => callService.getTranscript(id), [id])
@@ -75,6 +78,60 @@ const CallDetailPage = () => {
     return () => clearInterval(interval)
   }, [call?.status, refetchCall, refetchTranscript, refetchSummary, refetchNotes])
 
+  useEffect(() => {
+    if (!call?.user_id) return
+    const fetchUserFolders = async () => {
+      setFoldersLoading(true)
+      try {
+        const res = await callService.getCallFolders({ user_id: call.user_id })
+        setUserFolders(res.data.data || [])
+      } catch (err) {
+        console.error('Failed to fetch user folders:', err)
+      } finally {
+        setFoldersLoading(false)
+      }
+    }
+    fetchUserFolders()
+  }, [call?.user_id])
+
+  const getCallFolderDate = (dateStr) => {
+    if (!dateStr) return ''
+    return dateStr.split('T')[0]
+  }
+
+  const formatFolderDateShort = (dateStr) => {
+    if (!dateStr) return ''
+    const [year, month, day] = dateStr.split('-')
+    const date = new Date(year, month - 1, day)
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
+
+  const currentFolder = userFolders.find(
+    (f) => f.calls.some((c) => c.id === call.id)
+  )
+  const currentFolderDate = currentFolder ? currentFolder.folder_date : ''
+
+  const currentCallIndex = currentFolder
+    ? currentFolder.calls.findIndex((c) => c.id === call.id)
+    : -1
+
+  const nextCall = currentFolder && currentCallIndex !== -1 && currentCallIndex < currentFolder.calls.length - 1
+    ? currentFolder.calls[currentCallIndex + 1]
+    : null
+
+  const handleNavigateToCall = (callId) => {
+    navigate(`/calls/${callId}`, { state: location.state })
+    localStorage.setItem('crm_selected_call_id', callId)
+  }
+
+  const handleDateFilterChange = (dateVal) => {
+    const selectedFolder = userFolders.find((f) => f.folder_date === dateVal)
+    const topCall = selectedFolder?.calls[0]
+    if (topCall) {
+      handleNavigateToCall(topCall.id)
+    }
+  }
+
   const handleCopyTranscript = () => {
     if (transcript?.full_text) {
       navigator.clipboard.writeText(transcript.full_text)
@@ -82,6 +139,33 @@ const CallDetailPage = () => {
       setTimeout(() => setCopied(false), 2000)
       toast.success('Transcript copied')
     }
+  }
+
+  const handleCopyAudioLink = async () => {
+    let url = call.file_url;
+    if (url && !url.startsWith('http')) {
+      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5002';
+      url = `${apiBase}${url}`;
+    }
+    
+    if (!url) {
+      toast.error('No audio URL available');
+      return;
+    }
+    
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Audio link copied!');
+    } catch (err) {
+      toast.error('Failed to copy link');
+    }
+  }
+
+  const getAudioSrc = () => {
+    if (!call?.file_url) return '';
+    if (call.file_url.startsWith('http')) return call.file_url;
+    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5002';
+    return `${apiBase}${call.file_url}`;
   }
 
   const handleAddNote = async () => {
@@ -134,8 +218,8 @@ const CallDetailPage = () => {
   return (
     <div className="space-y-5 fade-in">
       <div>
-        <Link to="/calls" className="text-sm text-slate-500 hover:text-brand-600 flex items-center gap-1 mb-3">
-          <ArrowLeft size={14} /> Back to Calls
+        <Link to={location.state?.from || '/calls'} className="text-sm text-slate-500 hover:text-brand-600 flex items-center gap-1 mb-3">
+          <ArrowLeft size={14} /> {location.state?.from?.includes('/calls/folders') ? 'Back to Call Folders' : location.state?.from?.includes('/businesses') ? 'Back to Business Details' : 'Back to Calls'}
         </Link>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -151,16 +235,56 @@ const CallDetailPage = () => {
               {call.is_duplicate && <Badge variant="warning">Possible Duplicate</Badge>}
             </div>
           </div>
-          {isManager() && (
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={handleReprocess} disabled={reprocessing}>
-                <RefreshCw size={14} className={clsx(reprocessing && 'animate-spin')} /> Reprocess
+          <div className="flex gap-2 items-center flex-wrap">
+            {/* Date filter dropdown */}
+            {userFolders.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-zinc-800 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700">
+                <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase shrink-0">Date:</span>
+                <select
+                  value={currentFolderDate}
+                  onChange={(e) => handleDateFilterChange(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 dark:text-zinc-300 focus:outline-none cursor-pointer border-0 p-0"
+                >
+                  {userFolders.map((f) => (
+                    <option key={f.folder_date} value={f.folder_date} className="dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">
+                      {formatFolderDateShort(f.folder_date)} ({f.total_calls})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Next Audio Button */}
+            {nextCall && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleNavigateToCall(nextCall.id)}
+                className="flex items-center gap-1.5 border border-slate-200 dark:border-zinc-700 hover:border-brand-300 hover:text-brand-600"
+              >
+                Next Audio →
               </Button>
-              <Button variant="danger" size="sm" onClick={handleDeleteCall} disabled={deleting}>
-                <Trash2 size={14} /> Delete
-              </Button>
-            </div>
-          )}
+            )}
+
+            {/* Vertical Divider */}
+            {(userFolders.length > 0 || nextCall) && (
+              <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
+            )}
+
+            <Button variant="ghost" size="sm" onClick={handleCopyAudioLink}>
+              <Link2 size={14} /> Copy Link
+            </Button>
+            {isManager() && (
+              <>
+                <Button variant="ghost" size="sm" onClick={handleReprocess} disabled={reprocessing}>
+                  <RefreshCw size={14} className={clsx(reprocessing && 'animate-spin')} /> Reprocess
+                </Button>
+                <Button variant="danger" size="sm" onClick={handleDeleteCall} disabled={deleting}>
+                  <Trash2 size={14} /> Delete
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -180,7 +304,32 @@ const CallDetailPage = () => {
                 </div>
               )}
               <div className="flex justify-between"><span className="text-slate-400">File Size</span><span>{formatFileSize(call.file_size)}</span></div>
+              <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-zinc-800">
+                <span className="text-slate-400 font-medium">Audio Link</span>
+                <button
+                  onClick={handleCopyAudioLink}
+                  className="text-xs text-brand-600 hover:text-brand-700 hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 font-semibold"
+                >
+                  <Link2 size={12} className="shrink-0" />
+                  Copy Link
+                </button>
+              </div>
             </div>
+          </Card>
+
+          {/* Audio Player Card */}
+          <Card className="p-4 space-y-3">
+            <h3 className="font-semibold text-slate-700 text-sm">Recording Playback</h3>
+            {call.file_url ? (
+              <audio
+                src={getAudioSrc()}
+                controls
+                className="w-full mt-1.5 focus:outline-none"
+                preload="metadata"
+              />
+            ) : (
+              <p className="text-xs text-slate-400 italic">Audio recording not available</p>
+            )}
           </Card>
 
           {/* Talk time */}
