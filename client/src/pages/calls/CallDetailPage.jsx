@@ -119,6 +119,10 @@ const CallDetailPage = () => {
     ? currentFolder.calls[currentCallIndex + 1]
     : null
 
+  const prevCall = currentFolder && currentCallIndex > 0
+    ? currentFolder.calls[currentCallIndex - 1]
+    : null
+
   const handleNavigateToCall = (callId) => {
     navigate(`/calls/${callId}`, { state: location.state })
     localStorage.setItem('crm_selected_call_id', callId)
@@ -254,6 +258,18 @@ const CallDetailPage = () => {
               </div>
             )}
 
+            {/* Prev Audio Button */}
+            {prevCall && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleNavigateToCall(prevCall.id)}
+                className="flex items-center gap-1.5 border border-slate-200 dark:border-zinc-700 hover:border-brand-300 hover:text-brand-600"
+              >
+                ← Prev Audio
+              </Button>
+            )}
+
             {/* Next Audio Button */}
             {nextCall && (
               <Button
@@ -267,7 +283,7 @@ const CallDetailPage = () => {
             )}
 
             {/* Vertical Divider */}
-            {(userFolders.length > 0 || nextCall) && (
+            {(userFolders.length > 0 || prevCall || nextCall) && (
               <div className="h-4 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
             )}
 
